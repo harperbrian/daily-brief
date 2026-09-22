@@ -1,0 +1,30 @@
+{
+  "name": "daily-brief",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A personal intelligence briefing: one email a day, ranked by decision impact, on GitHub Actions for $0.",
+  "license": "MIT",
+  "scripts": {
+    "brief": "node src/index.js",
+    "dry-run": "node src/index.js --dry-run",
+    "check-feeds": "node src/check-feeds.js",
+    "alert": "node src/run-alert.js",
+    "alert-dry": "node src/run-alert.js --dry-run",
+    "test": "node test/run.mjs",
+    "usage": "node src/report.js usage",
+    "tuning": "node src/report.js tuning",
+    "label": "node src/golden.js label",
+    "golden": "node src/golden.js score"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.0",
+    "fast-xml-parser": "^5.10.1",
+    "imapflow": "^1.6.5",
+    "nodemailer": "^7.0.9",
+    "rss-parser": "^3.13.0"
+  }
+}

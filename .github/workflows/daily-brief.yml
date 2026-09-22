@@ -1,0 +1,166 @@
+name: Daily Brief
+
+on:
+  schedule:
+    # GitHub cron is UTC only, so both DST offsets are listed and the job itself
+    # checks the real local clock. The example is US Central: 11:30 UTC = 6:30
+    # CDT (summer); 12:30 UTC = 6:30 CST (winter). For another timezone, set
+    # both lines to 6:30 local in summer and winter UTC, and set LOCAL_TZ below.
+    # The guard lets the first one that lands at or after 6 AM local run, and
+    # dedupes the other by date, so cron drift delays the brief rather than
+    # losing it.
+    - cron: '30 11 * * *'
+    - cron: '30 12 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build the brief but do not email or record history'
+        type: boolean
+        default: false
+
+# Shared with the breaking-alert workflow: both write state/history.json, and
+# two concurrent writers would lose one of the updates.
+concurrency:
+  group: brief-state
+  cancel-in-progress: false
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    env:
+      # Your IANA timezone. Keep it equal to `timezone` in config/preferences.json.
+      LOCAL_TZ: America/Chicago
+    # 55 min. Measured Claude-subscription runs: 23.8 min on 2026-08-23 (233
+    # candidates, from a Mac), 27.0 and 31.3 min on 2026-09-18 (257 and 260
+    # candidates, ubuntu-latest) -- the claude-code provider runs one CLI call
+    # at a time by design (concurrency=1), since subscription rate limits are
+    # per-account rather than per-request. 15 min killed the job mid-scoring
+    # before it ever sent; 40 left under 9 min of headroom on the first live
+    # run. 55 covers a heavy news day and is still well under GitHub's
+    # 360-minute hosted-runner ceiling. Unused minutes cost nothing.
+    timeout-minutes: 55
+    permissions:
+      contents: write # only to commit the history file back
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the branch tip when the job STARTS, not the commit that was
+          # current when GitHub queued the event. On 2026-09-22 the second DST
+          # cron was queued at 15:33 UTC, waited behind the first run in the
+          # concurrency group, and started 20 s after that run pushed today's
+          # history. Pinned to the stale SHA, its guard saw no brief for today,
+          # sent a second one, then failed on a history.json rebase conflict.
+          ref: ${{ github.ref }}
+
+      - name: Should today's brief run now?
+        id: guard
+        run: |
+          HOUR=$(TZ=$LOCAL_TZ date +%H)
+          TODAY=$(TZ=$LOCAL_TZ date +%Y-%m-%d)
+          # local date of the most recent brief actually sent. Alerts never
+          # touch `entries`, and dry runs never write history, so this is a
+          # clean "already sent today" signal.
+          LAST_MS=$(jq -r '[.entries[]?.sent_at] | max // 0' state/history.json)
+          LAST_DAY=$(TZ=$LOCAL_TZ date -d "@$((LAST_MS / 1000))" +%Y-%m-%d)
+          echo "local hour: $HOUR  today: $TODAY  last brief: $LAST_DAY"
+          # Manual runs always proceed. Scheduled runs proceed once per day, at
+          # or after 6 AM. The old guard required the hour to be exactly 06,
+          # and GitHub cron drift on 2026-09-18 was ~4 hours (the 10:30 UTC
+          # cron fired at 14:35), so BOTH daily crons were rejected and no
+          # brief would have gone out. Date-dedupe instead of hour-match means
+          # drift of any size delays the brief rather than losing it, and the
+          # second DST cron entry is a no-op because the first already sent.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "$LAST_DAY" = "$TODAY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: today's brief already sent."
+          elif [ "$((10#$HOUR))" -ge 6 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: before 6 AM local (winter cron fired on summer clock)."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        if: steps.guard.outputs.run == 'true'
+        run: npm ci
+
+      # Only needed in subscription mode (CLAUDE_CODE_OAUTH_TOKEN set). Cheap to
+      # skip; secrets can't be read in `if:` so the check lives in the shell.
+      - name: Install Claude Code CLI (subscription mode only)
+        if: steps.guard.outputs.run == 'true'
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            npm install -g @anthropic-ai/claude-code
+            echo "claude $(claude --version)"
+            # One tiny smoke call so the log says plainly whether the token
+            # authenticates on this runner. Never fails the job: the pipeline
+            # cascades to the next provider on its own, this just makes the
+            # reason readable instead of buried in per-batch retry noise.
+            set +e
+            OUT=$(claude -p 'Reply with the single word OK' --output-format json --model haiku </dev/null 2>/tmp/claude-smoke.err)
+            RC=$?
+            set -e
+            echo "smoke exit=$RC"
+            echo "smoke stdout: $(echo "$OUT" | head -c 400)"
+            echo "smoke stderr: $(grep -v 'no stdin data' /tmp/claude-smoke.err | head -c 800)"
+          else
+            echo "Not in subscription mode; skipping."
+          fi
+
+      - name: Generate and send
+        if: steps.guard.outputs.run == 'true'
+        env:
+          # Provider is auto-detected from whichever credential exists, free
+          # options first: claude-code → gemini → anthropic → rule-based.
+          # Set the MODEL_PROVIDER repo variable to force one explicitly.
+          MODEL_PROVIDER: ${{ vars.MODEL_PROVIDER }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          BRIEF_TO: ${{ secrets.BRIEF_TO }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }} # optional; RSS-only if unset
+        run: |
+          echo "dry_run input: '${{ inputs.dry_run }}' (event: ${{ github.event_name }})"
+          npm run brief ${{ inputs.dry_run && '-- --dry-run' || '' }}
+
+      - name: Commit history
+        if: steps.guard.outputs.run == 'true' && !inputs.dry_run
+        run: |
+          git config user.name  "daily-brief-bot"
+          git config user.email "actions@github.com"
+          git add state/history.json
+          if git diff --staged --quiet; then
+            echo "No history change."
+          else
+            git commit -m "history: $(TZ=$LOCAL_TZ date +%Y-%m-%d)"
+            # Rebase first: if anything was pushed since checkout, a bare push
+            # would fail and today's history would be lost.
+            git pull --rebase --autostash
+            git push
+          fi
+
+      # The brief is attached to the run so a send failure never means the work is
+      # lost — you can still read the morning's brief from the Actions page.
+      - name: Upload brief
+        # always(): the point of this step is to keep the brief when the send
+        # fails, and a plain condition is skipped on job failure.
+        if: always() && steps.guard.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: brief-${{ github.run_number }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn

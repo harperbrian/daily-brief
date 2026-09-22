@@ -1,0 +1,285 @@
+{
+  "owner": "Alex",
+  "timezone": "America/Chicago",
+  "delivery": {
+    "frequency": "daily",
+    "suggested_time": "06:30",
+    "target_stories": 15,
+    "min_stories": 8,
+    "_note": "15 decided 2026-08-19; the old five-minute / 650-900 word goal is retired."
+  },
+  "geography_priority": [
+    {
+      "location": "Madison and Dane County, Wisconsin",
+      "weight": 1.0
+    },
+    {
+      "location": "Wisconsin",
+      "weight": 0.85
+    },
+    {
+      "location": "Bend and Deschutes County, Oregon",
+      "weight": 0.75
+    },
+    {
+      "location": "United States",
+      "weight": 0.55
+    },
+    {
+      "location": "Global",
+      "weight": 0.35
+    }
+  ],
+  "topic_priority": [
+    {
+      "topic": "Artificial intelligence",
+      "weight": 1.0
+    },
+    {
+      "topic": "Financial markets, banking, economy, Federal Reserve and SEC",
+      "weight": 0.9
+    },
+    {
+      "topic": "Political policy with practical personal impact",
+      "weight": 0.85
+    },
+    {
+      "topic": "Science breakthroughs",
+      "weight": 0.8
+    },
+    {
+      "topic": "Environment, climate, wildlife and nature",
+      "weight": 0.8
+    },
+    {
+      "topic": "Parenting, schools and child safety",
+      "weight": 0.8
+    },
+    {
+      "topic": "Longevity and evidence-based health advances",
+      "weight": 0.75
+    },
+    {
+      "topic": "Preventive health and fitness",
+      "weight": 0.75
+    },
+    {
+      "topic": "Relationships research",
+      "weight": 0.65
+    },
+    {
+      "topic": "Travel and airline or hotel loyalty programs",
+      "weight": 0.65
+    }
+  ],
+  "junk_patterns": [
+    "\\b(NBA|NFL|MLB|NHL) (draft|trade|scores?)\\b",
+    "\\bwhat to watch (tonight|this weekend)\\b"
+  ],
+  "_junk_patterns_note": "Case-insensitive regex, applied to headlines before scoring. Keep these narrow: dropping a real story is far worse than paying a fraction of a cent to score a dud. Built-in defaults live in src/normalize.js.",
+  "special_rules": {
+    "health": "State evidence stage: preclinical, observational, randomized trial, guideline, regulatory action, or unclear. Do not turn weak evidence into advice.",
+    "finance": "Explain market or policy significance; do not issue personalized buy or sell recommendations.",
+    "politics": "Prioritize enacted policy, court decisions, deadlines, taxes, benefits, schools, employment and direct practical effects over partisan commentary.",
+    "local": "Include only actionable or consequential local news, not routine filler.",
+    "travel": "Prioritize loyalty changes, major disruptions, routes, fees, status rules and material promotions.",
+    "repeat_stories": "Only repeat a continuing story when there is a substantive new development."
+  },
+  "_schema_note": "Keys below are the NEW profile structure (docs/PROFILE.md). geography_priority / topic_priority / delivery.max_stories are LEGACY, still read by the current src/score.js, and are deleted in the scoring-core phase. Everything else is keyed on enum values rather than English sentences, which is what lets score.js drop its CATEGORY_TO_TOPIC and GEO_TO_PREF translation tables.",
+  "sections": [
+    {
+      "id": "what_matters",
+      "label": "What Actually Matters Today",
+      "min": 3,
+      "max": 5,
+      "detail": "full",
+      "_note": "Full field set. These are the developments most likely to change a decision — not the biggest headlines."
+    },
+    {
+      "id": "worth_knowing",
+      "label": "Worth Knowing",
+      "fill": true,
+      "detail": "brief",
+      "_note": "Fills the remainder up to target_stories. Headline + one-sentence why + link."
+    },
+    {
+      "id": "watching",
+      "label": "Things I'm Watching",
+      "max": 4,
+      "optional": true,
+      "detail": "line",
+      "_note": "Unresolved and forthcoming: proposed rules, pending launches, upcoming decisions. One line each."
+    }
+  ],
+  "relevance": {
+    "_note": "relevance = 10 * (breadth + peak_gain * max(0, peak - breadth)) where breadth is the weighted mean and peak is max(peak_eligibility_i * dimension_i). peak_gain blends between the two: 0 is a plain weighted sum, 1 is pure max. peak_eligibility is what stops a dimension being GROUNDS rather than a MODIFIER — nothing is worth reading because it is merely new, or merely nearby.",
+    "peak_gain": 0.55,
+    "dimensions": {
+      "financial_impact": {
+        "weight": 0.2,
+        "peak_eligibility": 1.0,
+        "description": "Could move money you have, owe, earn, or plan to spend."
+      },
+      "career_impact": {
+        "weight": 0.15,
+        "peak_eligibility": 1.0,
+        "description": "Changes which jobs, skills, companies, or positioning make sense."
+      },
+      "investment": {
+        "weight": 0.15,
+        "peak_eligibility": 1.0,
+        "description": "Changes an investment thesis, valuation assumption, or industry structure."
+      },
+      "decision_change": {
+        "weight": 0.15,
+        "peak_eligibility": 1.0,
+        "description": "Could realistically change a decision you make. The sharpest test in the profile."
+      },
+      "business_opportunity": {
+        "weight": 0.1,
+        "peak_eligibility": 0.9,
+        "description": "A concrete entrepreneurial or small-business opening, with real economics."
+      },
+      "property": {
+        "weight": 0.1,
+        "peak_eligibility": 1.0,
+        "description": "Affects bookings, revenue, costs, risk, property value, or long-term viability of the rental property."
+      },
+      "home_purchase": {
+        "weight": 0.05,
+        "peak_eligibility": 1.0,
+        "description": "Affects mortgage financing, affordability, timing, or the target price range."
+      },
+      "magnitude": {
+        "weight": 0.05,
+        "peak_eligibility": 0.3,
+        "description": "Objective significance in the world. A modifier, never grounds — see the anti-anxiety rule."
+      },
+      "geographic": {
+        "weight": 0.05,
+        "peak_eligibility": 0.3,
+        "description": "Proximity. Your home town and county score highest here. A modifier, never grounds."
+      },
+      "novelty": {
+        "weight": 0.05,
+        "peak_eligibility": 0.0,
+        "description": "Genuinely new vs. a rehash. Can never by itself justify inclusion."
+      }
+    },
+    "_weights_note": "Weights are RELATIVE and are normalized in src/score.js — they need not sum to 1. The nine dimensions from docs/PROFILE.md keep their stated percentages exactly; 'magnitude' is added on top (the profile lists it as primary objective #9 but omits it from the nine, and without it a genuinely enormous world event with no direct financial line scores near zero and never appears). Its low peak_eligibility keeps it a modifier, so catastrophe still cannot lead on size alone."
+  },
+  "source_quality": {
+    "_note": "Deterministic from the feed's source_class, never model-scored — it is a property of the outlet, known at retrieval. A cluster's effective quality is the BEST class among its members, so an aggregator that breaks a story is lifted when a primary source actually corroborates it. Floored at aggregator: if a feed reliably produces worse, delete the feed rather than pay to score it into irrelevance.",
+    "multipliers": {
+      "primary": 1.0,
+      "original_reporting": 0.9,
+      "established": 0.8,
+      "trade": 0.75,
+      "aggregator": 0.6,
+      "social": 0.3
+    },
+    "model_deductions": {
+      "press_release": 0.9,
+      "unnamed_sources_only": 0.85,
+      "rehosted_social_claim": 0.6,
+      "no_primary_link": 0.9,
+      "unsupported_superlative": 0.9
+    },
+    "model_floor_ratio": 0.6,
+    "_model_floor_note": "The model may demote a source at most this far, and may never promote one. Observations from the model; prices set by code."
+  },
+  "allocation": {
+    "_note": "Long-run targets, applied at SELECTION time as a bounded tie-break over a rolling window — never at scoring time, which would make a score depend on which batch it landed in. Bounded at +/-9 on a 0-100 scale: enough to reorder near-ties, never enough to promote a weak story over a strong one.",
+    "window_days": 30,
+    "warmup_days": 10,
+    "gain": 0.6,
+    "max_deficit": 0.15,
+    "daily_ceiling": 6,
+    "_daily_ceiling_note": "Max stories from one category in a single brief. Reader protection, not a target.",
+    "no_backfill": true,
+    "_no_backfill_note": "If a category has nothing worth sending today, send fewer stories. Never pad to hit a percentage.",
+    "category_targets": {
+      "ai": 0.27,
+      "finance": 0.25,
+      "career": 0.15,
+      "entrepreneurship": 0.13,
+      "politics": 0.1,
+      "parenting": 0.1
+    },
+    "geography_targets": {
+      "home_region": 0.25,
+      "us": 0.5,
+      "global": 0.25
+    },
+    "reserved_slots": {
+      "quality_of_life": {
+        "min": 1,
+        "max": 2,
+        "_note": "Outside the category percentages. Health, relationships, travel."
+      },
+      "home_local": {
+        "min": 1,
+        "max": 2,
+        "_note": "Geography home_region with a strong home-town signal (hyperlocal_terms below). Keeps local awareness alive on heavy national days."
+      },
+      "property": {
+        "min": 0,
+        "max": 1,
+        "_note": "Standing priority outside the geography percentages, capped at 1: with 2, property-area stories took 2 of the 5 lead slots in a labeled review. min stays 0 -- a trivial property-area story should never be manufactured into a slot."
+      }
+    }
+  },
+  "heuristic_priors": {
+    "_note": "Per-track priors for the $0 rule-based provider, moved out of code so the fallback is config-driven too.",
+    "hyperlocal_terms": ["madison", "dane county", "fitchburg", "middleton", "sun prairie", "verona", "waunakee"],
+    "_hyperlocal_note": "EXAMPLE. Place names that mean right where you live. A headline containing one scores 10 on the geographic dimension in rule-based mode.",
+    "property_terms": ["bend", "deschutes county", "sunriver", "mt. bachelor", "mount bachelor", "central oregon", "highway 97", "redmond, or"],
+    "_property_note": "EXAMPLE. Names that mean the rental area: the town, the county, the resort or attraction that drives demand, the road that reaches it.",
+    "track_category": {
+      "ai": "ai",
+      "finance": "finance",
+      "career": "career",
+      "entrepreneurship": "entrepreneurship",
+      "us": "politics",
+      "global": "politics",
+      "home_region": "politics",
+      "home_local": "politics",
+      "property_local": "politics",
+      "health": "quality_of_life",
+      "travel": "quality_of_life",
+      "parenting": "parenting",
+      "science_environment": "ai"
+    },
+    "track_geography": {
+      "home_local": "home_region",
+      "home_region": "home_region",
+      "property_local": "property_area",
+      "us": "us",
+      "global": "global"
+    },
+    "_category_note": "track_category is only a FALLBACK. The heuristic derives category from which relevance dimension scored highest, because a track is a retrieval budget key, not a reason a story matters. Mapping property_local straight to a category made every property-area item 'quality_of_life' and swamped that bucket.",
+    "dimension_category": {
+      "financial_impact": "finance",
+      "investment": "finance",
+      "home_purchase": "finance",
+      "property": "finance",
+      "career_impact": "career",
+      "business_opportunity": "entrepreneurship"
+    }
+  },
+  "integrity": {
+    "_note": "Framing penalties, applied MULTIPLICATIVELY. A flat point deduction is a different punishment at different score levels — 15 points is 17% of a 90 and 50% of a 30 — which penalizes weak stories harder than strong ones for the same offense. These are the profile's suppression list expressed as prices.",
+    "deductions": {
+      "routine_filler": 0.55,
+      "engagement_bait": 0.6,
+      "outrage_bait": 0.6,
+      "hype_without_substance": 0.65,
+      "recycled_announcement": 0.7,
+      "sensationalism": 0.75,
+      "opinion_only": 0.8,
+      "unverified_claim": 0.8
+    },
+    "floor": 0.35,
+    "_floor_note": "Even a maximally flagged story keeps this fraction, so one bad framing call cannot zero out a genuinely important development."
+  }
+}

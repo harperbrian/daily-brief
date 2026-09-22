@@ -1,0 +1,86 @@
+{
+  "_comment": "Targeted search sweep, used only when TAVILY_API_KEY is set. This is NOT a general news sweep — RSS covers that far better. It exists for one reason: many town, county and state-legislature sites publish no RSS at all, which can leave the profile's highest-priority monitoring area with no primary source. Domain-scoped queries reach those sites directly, which is why results can honestly carry source_class 'primary'. Free tier is 1,000 searches/month; this uses ~9/day.",
+  "_fields": {
+    "id": "Becomes the retrieval track for scoring and budgeting.",
+    "include_domains": "Restricts results to these hosts. When set to official sites, the source_class below is justified; without it, results are unverifiable and must stay 'established' or lower.",
+    "source_class": "Quality tier for results. Only claim 'primary' when include_domains restricts to official sources.",
+    "lean": "Almost always 'primary' here, since these are government records rather than framing."
+  },
+  "queries": [
+    {
+      "id": "property_local",
+      "query": "short-term rental license cap ordinance permit zoning regulation",
+      "include_domains": ["bendoregon.gov", "deschutes.org", "oregon.gov", "oregonlegislature.gov"],
+      "source_class": "primary",
+      "lean": "primary",
+      "topic": "general",
+      "time_range": "week",
+      "max_results": 10
+    },
+    {
+      "id": "property_local",
+      "query": "lodging tax sales tax property tax assessment vacation rental",
+      "include_domains": ["bendoregon.gov", "deschutes.org", "oregon.gov"],
+      "source_class": "primary",
+      "lean": "primary",
+      "topic": "general",
+      "time_range": "week",
+      "max_results": 8
+    },
+    {
+      "id": "property_local",
+      "query": "Bend Deschutes County short-term rental regulation enforcement STR licensing news",
+      "source_class": "established",
+      "lean": "center",
+      "topic": "news",
+      "time_range": "week",
+      "max_results": 10
+    },
+    {
+      "id": "property_local",
+      "query": "Deschutes County Oregon wildfire risk homeowners insurance availability water restrictions",
+      "source_class": "established",
+      "lean": "center",
+      "topic": "news",
+      "time_range": "week",
+      "max_results": 8
+    },
+    {
+      "id": "entrepreneurship",
+      "query": "small business acquisition SMB automation AI consulting recurring revenue economics",
+      "source_class": "established",
+      "lean": "center",
+      "topic": "news",
+      "time_range": "week",
+      "max_results": 10
+    },
+    {
+      "id": "career",
+      "query": "enterprise software customer success implementation solution architect hiring layoffs compensation",
+      "source_class": "established",
+      "lean": "center",
+      "topic": "news",
+      "time_range": "week",
+      "max_results": 10
+    },
+    {
+      "id": "home_local",
+      "query": "Dane County Madison Wisconsin city council ordinance referendum development",
+      "include_domains": ["danecounty.gov", "cityofmadison.com", "wisconsin.gov"],
+      "source_class": "primary",
+      "lean": "primary",
+      "topic": "general",
+      "time_range": "week",
+      "max_results": 8
+    },
+    {
+      "id": "home_region",
+      "query": "Southern Wisconsin housing inventory mortgage rates home prices affordability",
+      "source_class": "established",
+      "lean": "center",
+      "topic": "news",
+      "time_range": "week",
+      "max_results": 8
+    }
+  ]
+}

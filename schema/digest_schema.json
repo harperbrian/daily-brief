@@ -1,0 +1,88 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "section": {
+            "type": "string",
+            "description": "Copy the section id exactly as given in the input. Sections are assigned by the pipeline; you never choose or reorder them."
+          },
+          "label": { "type": "string" },
+          "stories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "feedback_id": {
+                  "type": "string",
+                  "description": "Must exactly equal the event_key supplied for this story."
+                },
+                "headline": { "type": "string", "description": "Concise and factual. Not the source's headline if that one is clickbait." },
+                "category": { "type": "string" },
+                "summary": {
+                  "type": "string",
+                  "description": "What happened. 2-4 sentences for detail 'full'; ONE sentence for detail 'brief'; a single short clause for detail 'line'. Lead with the concrete specifics: numbers, names, dates, amounts."
+                },
+                "why_it_matters": {
+                  "type": "string",
+                  "description": "The direct channel to the reader's situation. Name the mechanism, never just assert importance. Empty string for detail 'line'."
+                },
+                "whats_new": {
+                  "type": "string",
+                  "description": "Only when thread_context is present: what changed since the last briefing. Empty string otherwise. If nothing material changed, this story should not have been selected."
+                },
+                "thread_state": {
+                  "type": "string",
+                  "description": "One sentence under 200 characters describing where this story now stands, stored so a future briefing can say what changed. Write it for a reader who last saw this weeks ago."
+                },
+                "confidence": {
+                  "type": "string",
+                  "enum": ["Certain", "Likely", "Guessing"],
+                  "description": "Certain = directly supported by strong evidence in the supplied material. Likely = strong inference. Guessing = meaningful uncertainty. You are reading an excerpt, not the full article — prefer Likely."
+                },
+                "action": {
+                  "type": "string",
+                  "enum": ["NONE", "WATCH", "RESEARCH", "CONSIDER_ACTION"],
+                  "description": "A recommendation to the reader. NONE is the correct answer for most stories; reserve CONSIDER_ACTION for something with a real decision attached."
+                },
+                "action_reason": {
+                  "type": "string",
+                  "description": "One short clause explaining the action. Empty string when action is NONE."
+                },
+                "time_horizon": {
+                  "type": "string",
+                  "enum": ["Immediate", "Weeks", "Months", "Years"],
+                  "description": "When the consequences land for the reader, not when the event happened."
+                },
+                "primary_url": { "type": "string" },
+                "supporting_urls": { "type": "array", "maxItems": 2, "items": { "type": "string" } },
+                "evidence_stage": {
+                  "type": "string",
+                  "enum": ["not_applicable", "preclinical", "observational", "randomized_trial", "guideline", "regulatory_action", "unclear"]
+                }
+              },
+              "required": [
+                "feedback_id", "headline", "category", "summary", "why_it_matters",
+                "whats_new", "thread_state", "confidence", "action", "action_reason",
+                "time_horizon", "primary_url", "supporting_urls", "evidence_stage"
+              ]
+            }
+          }
+        },
+        "required": ["section", "label", "stories"]
+      }
+    },
+    "todays_signal": {
+      "type": "string",
+      "description": "One sentence naming the pattern across today's briefing. Not a recap of the top story. If there is no honest pattern, say something true and small rather than forcing a theme."
+    }
+  },
+  "required": ["sections", "todays_signal"],
+  "$comment": "The `section` enum was removed deliberately. Sections are assigned by src/select.js and passed in; letting a model pick them would hand selection to the writer and break the 'code decides' invariant. src/write.js restores primary_url and supporting_urls from selection data regardless of what is returned here, so a citation cannot be hallucinated."
+}

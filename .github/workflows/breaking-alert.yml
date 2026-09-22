@@ -1,0 +1,89 @@
+name: Breaking Alert
+
+on:
+  # Hourly. The job itself skips overnight hours, so you are not woken at 3 AM
+  # for a tornado warning four counties away.
+  # To halve the Actions minutes at the cost of up to an hour's delay,
+  # change this to '5 */2 * * *'.
+  schedule:
+    - cron: '5 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Check for alerts but do not email'
+        type: boolean
+        default: false
+
+# Shares a group with the daily brief: both write state/history.json, and two
+# concurrent writers would lose one of the updates.
+concurrency:
+  group: brief-state
+  cancel-in-progress: false
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    env:
+      # Your IANA timezone. Keep it equal to `timezone` in config/preferences.json.
+      LOCAL_TZ: America/Chicago
+    timeout-minutes: 6
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out the branch tip when the job STARTS, not the commit that was
+          # current when GitHub queued the event. On 2026-09-22 the second DST
+          # cron was queued at 15:33 UTC, waited behind the first run in the
+          # concurrency group, and started 20 s after that run pushed today's
+          # history. Pinned to the stale SHA, its guard saw no brief for today,
+          # sent a second one, then failed on a history.json rebase conflict.
+          ref: ${{ github.ref }}
+
+      - name: Waking hours local?
+        id: guard
+        run: |
+          HOUR=$(TZ=$LOCAL_TZ date +%H)
+          echo "local hour: $HOUR"
+          # 07:00-22:59 local. Manual runs always proceed.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 22 ]; }; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Overnight; skipping."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install
+        if: steps.guard.outputs.run == 'true'
+        run: npm ci
+
+      # No model credentials here on purpose: urgency detection is rule-based, so
+      # a quiet hour costs seconds and zero tokens.
+      - name: Check for breaking news
+        if: steps.guard.outputs.run == 'true'
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          BRIEF_TO: ${{ secrets.BRIEF_TO }}
+        run: npm run alert ${{ inputs.dry_run && '-- --dry-run' || '' }}
+
+      - name: Commit alert history
+        if: steps.guard.outputs.run == 'true' && !inputs.dry_run
+        run: |
+          git config user.name  "daily-brief-bot"
+          git config user.email "actions@github.com"
+          git add state/history.json
+          if git diff --staged --quiet; then
+            echo "No alerts sent."
+          else
+            git commit -m "alert: $(TZ=$LOCAL_TZ date '+%Y-%m-%d %H:%M')"
+            git pull --rebase --autostash
+            git push
+          fi

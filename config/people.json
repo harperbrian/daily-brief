@@ -1,0 +1,29 @@
+{
+  "_note": "EXAMPLE. Places where close friends and family live. The hourly alert path watches each one for REAL IMPACT — damage, casualties, evacuations, area-wide health hazards — never for forecasts or warnings. `match` is a case-insensitive regex an item must hit (title + snippet) before it can alert, so a metro-wide feed only fires for the part that matters. `lat`/`lng` drive the USGS earthquake proximity check. `nws` lists the county and forecast zone (from https://api.weather.gov/points/LAT,LNG); only impact-tier NWS products count there. Each place needs feeds in config/feeds.json with `\"track\": \"people\"`, `\"alert_only\": true`, and `\"place\"` set to the id. Delete both entries and set `places` to [] to turn the feature off.",
+  "places": [
+    {
+      "id": "denver",
+      "place": "Denver, CO",
+      "people": "Sam and Jordan",
+      "lat": 39.7392,
+      "lng": -104.9903,
+      "match": "denver|aurora|lakewood|arvada|denver metro",
+      "nws": [
+        "COC031",
+        "COZ040"
+      ]
+    },
+    {
+      "id": "phoenix",
+      "place": "Phoenix, AZ",
+      "people": "Mom and Dad",
+      "lat": 33.4484,
+      "lng": -112.074,
+      "match": "phoenix|maricopa|scottsdale|tempe|mesa\\b|glendale|valley\\b",
+      "nws": [
+        "AZC013",
+        "AZZ023"
+      ]
+    }
+  ]
+}

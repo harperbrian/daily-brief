@@ -1,0 +1,676 @@
+{
+  "_note": "EXAMPLE configuration for a fictional reader (Alex, Madison WI, rental in Bend OR). National feeds are a reasonable starting set for anyone; every feed on the home_local, home_region, property_local and people tracks is a placeholder — replace them with the outlets that cover your places. docs/CUSTOMIZE.md walks through it. Run `npm run check-feeds` after editing.",
+  "feeds": [
+    {
+      "id": "ap_top",
+      "track": "us",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "alert": true,
+      "name": "AP Top News (mirror)",
+      "url": "https://feedx.net/rss/ap.xml",
+      "note": "Third-party mirror; AP retired public RSS. Tier 2 because the mirror is unaffiliated."
+    },
+    {
+      "id": "upi",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "alert": true,
+      "name": "UPI Top News",
+      "url": "https://rss.upi.com/news/top_news.rss"
+    },
+    {
+      "id": "axios",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "alert": true,
+      "name": "Axios",
+      "url": "https://api.axios.com/feed/"
+    },
+    {
+      "id": "cbs_news",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "alert": true,
+      "name": "CBS News",
+      "url": "https://www.cbsnews.com/latest/rss/main"
+    },
+    {
+      "id": "npr_national",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "NPR National",
+      "url": "https://feeds.npr.org/1003/rss.xml"
+    },
+    {
+      "id": "fox_news",
+      "track": "us",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "right",
+      "alert": true,
+      "name": "Fox News",
+      "url": "https://moxie.foxnews.com/google-publisher/latest.xml"
+    },
+    {
+      "id": "wsj_us",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-right",
+      "name": "Wall Street Journal — US",
+      "url": "https://feeds.content.dowjones.io/public/rss/RSSUSnews"
+    },
+    {
+      "id": "dispatch",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-right",
+      "name": "The Dispatch",
+      "url": "https://thedispatch.com/feed/"
+    },
+    {
+      "id": "wash_examiner",
+      "track": "us",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "right",
+      "name": "Washington Examiner",
+      "url": "https://www.washingtonexaminer.com/feed"
+    },
+    {
+      "id": "reason",
+      "track": "us",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "right",
+      "name": "Reason (libertarian)",
+      "url": "https://reason.com/feed/"
+    },
+    {
+      "id": "thehill",
+      "track": "us",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "The Hill",
+      "url": "https://thehill.com/news/feed/"
+    },
+    {
+      "id": "scotusblog",
+      "track": "us",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "primary",
+      "name": "SCOTUSblog",
+      "url": "https://www.scotusblog.com/feed/"
+    },
+    {
+      "id": "federal_register",
+      "track": "us",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "name": "Federal Register (final rules)",
+      "url": "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Btype%5D%5B%5D=RULE",
+      "note": "Enacted rules only. Directly serves the preferences.json politics rule: policy with practical effect over commentary."
+    },
+    {
+      "id": "memeorandum",
+      "track": "us",
+      "tier": 2,
+      "source_class": "aggregator",
+      "lean": "center-left",
+      "name": "memeorandum",
+      "url": "https://www.memeorandum.com/feed.xml"
+    },
+    {
+      "id": "realclearpolitics",
+      "track": "us",
+      "tier": 2,
+      "source_class": "aggregator",
+      "lean": "right",
+      "name": "RealClearPolitics",
+      "url": "https://www.realclearpolitics.com/index.xml",
+      "note": "Right-leaning counterpart to memeorandum. Discovery signal, not evidence."
+    },
+    {
+      "id": "bbc_world",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "alert": true,
+      "name": "BBC World",
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml"
+    },
+    {
+      "id": "wsj_world",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-right",
+      "name": "Wall Street Journal — World",
+      "url": "https://feeds.content.dowjones.io/public/rss/RSSWorldNews"
+    },
+    {
+      "id": "csmonitor",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "Christian Science Monitor",
+      "url": "https://rss.csmonitor.com/feeds/usa"
+    },
+    {
+      "id": "semafor",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "Semafor",
+      "url": "https://www.semafor.com/rss.xml"
+    },
+    {
+      "id": "economist",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "The Economist",
+      "url": "https://www.economist.com/latest/rss.xml"
+    },
+    {
+      "id": "guardian_world",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "left",
+      "name": "Guardian World",
+      "url": "https://www.theguardian.com/world/rss"
+    },
+    {
+      "id": "aljazeera",
+      "track": "global",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "left",
+      "name": "Al Jazeera",
+      "url": "https://www.aljazeera.com/xml/rss/all.xml"
+    },
+    {
+      "id": "dw_world",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "Deutsche Welle World",
+      "url": "https://rss.dw.com/rdf/rss-en-world"
+    },
+    {
+      "id": "france24",
+      "track": "global",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "France 24",
+      "url": "https://www.france24.com/en/rss"
+    },
+    {
+      "id": "usgs_quakes",
+      "track": "global",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "USGS Significant Earthquakes",
+      "url": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/significant_week.atom"
+    },
+    {
+      "id": "techmeme",
+      "track": "ai",
+      "tier": 2,
+      "source_class": "aggregator",
+      "lean": "center",
+      "name": "Techmeme",
+      "url": "https://www.techmeme.com/feed.xml"
+    },
+    {
+      "id": "ars_technica",
+      "track": "ai",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "Ars Technica",
+      "url": "https://feeds.arstechnica.com/arstechnica/index"
+    },
+    {
+      "id": "verge_ai",
+      "track": "ai",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "The Verge AI",
+      "url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+    },
+    {
+      "id": "mit_tech_review",
+      "track": "ai",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "MIT Technology Review",
+      "url": "https://www.technologyreview.com/feed/"
+    },
+    {
+      "id": "hn_frontpage",
+      "track": "ai",
+      "tier": 2,
+      "source_class": "aggregator",
+      "lean": "center",
+      "name": "Hacker News (200+ points)",
+      "url": "https://hnrss.org/frontpage?points=200"
+    },
+    {
+      "id": "fed_press",
+      "track": "finance",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "Federal Reserve Press",
+      "url": "https://www.federalreserve.gov/feeds/press_all.xml",
+      "note": "Publishes in bursts, not daily. Empty days are normal, not a failure."
+    },
+    {
+      "id": "sec_press",
+      "track": "finance",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "SEC Press Releases",
+      "url": "https://www.sec.gov/news/pressreleases.rss"
+    },
+    {
+      "id": "cnbc_econ",
+      "track": "finance",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "CNBC Economy",
+      "url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"
+    },
+    {
+      "id": "marketwatch",
+      "track": "finance",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "MarketWatch Top Stories",
+      "url": "https://feeds.content.dowjones.io/public/rss/mw_topstories"
+    },
+    {
+      "id": "nature_news",
+      "track": "science_environment",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "name": "Nature",
+      "url": "https://www.nature.com/nature.rss"
+    },
+    {
+      "id": "science_daily",
+      "track": "science_environment",
+      "tier": 2,
+      "source_class": "aggregator",
+      "lean": "center",
+      "name": "ScienceDaily Top",
+      "url": "https://www.sciencedaily.com/rss/top/science.xml"
+    },
+    {
+      "id": "guardian_env",
+      "track": "science_environment",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "left",
+      "name": "Guardian Environment",
+      "url": "https://www.theguardian.com/environment/rss"
+    },
+    {
+      "id": "hechinger",
+      "track": "parenting",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "The Hechinger Report",
+      "url": "https://hechingerreport.org/feed/"
+    },
+    {
+      "id": "npr_ed",
+      "track": "parenting",
+      "tier": 1,
+      "source_class": "established",
+      "lean": "center-left",
+      "name": "NPR Education",
+      "url": "https://feeds.npr.org/1013/rss.xml"
+    },
+    {
+      "id": "the74",
+      "track": "parenting",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "The 74",
+      "url": "https://www.the74million.org/feed/"
+    },
+    {
+      "id": "nia_news",
+      "track": "health",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "name": "NIH National Institute on Aging",
+      "url": "https://www.nia.nih.gov/news/rss.xml",
+      "note": "Replaced the main NIH news feed, which began returning 403 to all non-browser clients. NIA is a better fit for the longevity interest anyway."
+    },
+    {
+      "id": "fda_press",
+      "track": "health",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "FDA Press Announcements",
+      "url": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml"
+    },
+    {
+      "id": "cdc_newsroom",
+      "track": "health",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "CDC Newsroom",
+      "url": "https://tools.cdc.gov/api/v2/resources/media/132608.rss",
+      "note": "Very high volume; per-feed cap keeps it from swamping the health track."
+    },
+    {
+      "id": "stat_news",
+      "track": "health",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "STAT News",
+      "url": "https://www.statnews.com/feed/"
+    },
+    {
+      "id": "npr_health",
+      "track": "health",
+      "tier": 1,
+      "source_class": "established",
+      "lean": "center-left",
+      "name": "NPR Health",
+      "url": "https://feeds.npr.org/1128/rss.xml"
+    },
+    {
+      "id": "medical_xpress",
+      "track": "health",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "Medical Xpress",
+      "url": "https://medicalxpress.com/rss-feed/"
+    },
+    {
+      "id": "view_from_wing",
+      "track": "travel",
+      "tier": 2,
+      "source_class": "trade",
+      "lean": "center",
+      "name": "View from the Wing",
+      "url": "https://viewfromthewing.com/feed/"
+    },
+    {
+      "id": "one_mile",
+      "track": "travel",
+      "tier": 2,
+      "source_class": "trade",
+      "lean": "center",
+      "name": "One Mile at a Time",
+      "url": "https://onemileatatime.com/feed/"
+    },
+    {
+      "id": "techcrunch",
+      "track": "career",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "TechCrunch",
+      "url": "https://techcrunch.com/feed/"
+    },
+    {
+      "id": "ars_tech_lab",
+      "track": "career",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "Ars Technica — Technology Lab",
+      "url": "https://feeds.arstechnica.com/arstechnica/technology-lab"
+    },
+    {
+      "id": "layoffs_fyi",
+      "track": "career",
+      "tier": 2,
+      "source_class": "trade",
+      "lean": "center",
+      "name": "Layoffs.fyi",
+      "url": "https://layoffs.fyi/feed/",
+      "note": "Bursty by nature; quiet weeks are good news."
+    },
+    {
+      "id": "stratechery",
+      "track": "entrepreneurship",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "Stratechery",
+      "url": "https://stratechery.com/feed/",
+      "note": "Business strategy analysis. Entrepreneurship track is under-sourced — revisit."
+    },
+    {
+      "id": "sd_relationships",
+      "track": "health",
+      "tier": 2,
+      "source_class": "aggregator",
+      "lean": "center",
+      "name": "ScienceDaily — Relationships",
+      "url": "https://www.sciencedaily.com/rss/mind_brain/relationships.xml",
+      "note": "Republishes university press releases. Slow feed; bursty."
+    },
+    {
+      "id": "channel3000",
+      "track": "home_local",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "Channel 3000 (WISC-TV Madison)",
+      "url": "https://www.channel3000.com/search/?f=rss&t=article&l=25&s=start_time&sd=desc",
+      "note": "EXAMPLE home-town source. Replace with the outlets that cover your town and county."
+    },
+    {
+      "id": "madison_local",
+      "track": "home_local",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center-left",
+      "name": "Wisconsin State Journal — Local",
+      "url": "https://madison.com/search/?f=rss&t=article&c=news/local&l=25&s=start_time&sd=desc"
+    },
+    {
+      "id": "wkow",
+      "track": "home_local",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "WKOW 27 Madison",
+      "url": "https://www.wkow.com/search/?f=rss&t=article&l=25&s=start_time&sd=desc"
+    },
+    {
+      "id": "nws_home",
+      "track": "home_local",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "NWS Alerts — Dane County WI",
+      "url": "https://api.weather.gov/alerts/active.atom?zone=WIC025,WIZ063",
+      "note": "County code plus forecast zone from https://api.weather.gov/points/LAT,LNG — see docs/CUSTOMIZE.md. Empty is the normal, good case."
+    },
+    {
+      "id": "wi_examiner",
+      "track": "home_region",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "Wisconsin Examiner",
+      "url": "https://wisconsinexaminer.com/feed/",
+      "note": "EXAMPLE home-state source (States Newsroom). Replace with your state."
+    },
+    {
+      "id": "wi_watch",
+      "track": "home_region",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center",
+      "name": "Wisconsin Watch",
+      "url": "https://wisconsinwatch.org/feed/"
+    },
+    {
+      "id": "wi_rightnow",
+      "track": "home_region",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "right",
+      "name": "Wisconsin Right Now",
+      "url": "https://www.wisconsinrightnow.com/feed/",
+      "note": "Right-leaning state source, kept so the state track is not one-sided. See README, \"How it tries to stay unbiased\"."
+    },
+    {
+      "id": "badger_institute",
+      "track": "home_region",
+      "tier": 2,
+      "source_class": "trade",
+      "lean": "center-right",
+      "name": "Badger Institute",
+      "url": "https://www.badgerinstitute.org/feed/"
+    },
+    {
+      "id": "ktvz",
+      "track": "property_local",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "KTVZ Central Oregon",
+      "url": "https://ktvz.com/feed/",
+      "note": "EXAMPLE property-area source. Replace with the outlets that cover where your rental is."
+    },
+    {
+      "id": "oregonlive",
+      "track": "property_local",
+      "tier": 1,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "The Oregonian — News",
+      "url": "https://www.oregonlive.com/arc/outboundfeeds/rss/category/news/?outputType=xml"
+    },
+    {
+      "id": "or_capchron",
+      "track": "property_local",
+      "tier": 2,
+      "source_class": "original_reporting",
+      "lean": "center-left",
+      "name": "Oregon Capital Chronicle",
+      "url": "https://oregoncapitalchronicle.com/feed/"
+    },
+    {
+      "id": "or_catalyst",
+      "track": "property_local",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "right",
+      "name": "Oregon Catalyst",
+      "url": "https://oregoncatalyst.com/feed"
+    },
+    {
+      "id": "nws_property",
+      "track": "property_local",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "name": "NWS Alerts — Deschutes County OR",
+      "url": "https://api.weather.gov/alerts/active.atom?zone=ORC017,ORZ511"
+    },
+    {
+      "id": "nws_denver",
+      "track": "people",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "alert_only": true,
+      "place": "denver",
+      "name": "NWS — Denver, CO",
+      "url": "https://api.weather.gov/alerts/active.atom?zone=COC031,COZ040",
+      "note": "People place. Only impact-tier products count here (tsunami warning, tornado emergency, evacuation, shelter-in-place) — never ordinary warnings."
+    },
+    {
+      "id": "9news_local",
+      "track": "people",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "alert": true,
+      "alert_only": true,
+      "place": "denver",
+      "name": "9NEWS Denver — Local",
+      "url": "https://www.9news.com/feeds/syndication/rss/news/local",
+      "note": "People place. Alert-only: never enters the daily brief. Fires only on real-impact headlines that also name the place."
+    },
+    {
+      "id": "nws_phoenix",
+      "track": "people",
+      "tier": 1,
+      "source_class": "primary",
+      "lean": "primary",
+      "alert": true,
+      "alert_only": true,
+      "place": "phoenix",
+      "name": "NWS — Phoenix, AZ",
+      "url": "https://api.weather.gov/alerts/active.atom?zone=AZC013,AZZ023"
+    },
+    {
+      "id": "12news",
+      "track": "people",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "alert": true,
+      "alert_only": true,
+      "place": "phoenix",
+      "name": "12News Phoenix — Local",
+      "url": "https://www.12news.com/feeds/syndication/rss/news/local"
+    }
+  ]
+}
