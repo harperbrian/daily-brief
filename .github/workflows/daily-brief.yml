@@ -86,7 +86,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.guard.outputs.run == 'true'
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Install
@@ -141,7 +141,8 @@ jobs:
         run: |
           git config user.name  "daily-brief-bot"
           git config user.email "actions@github.com"
-          git add state/history.json
+          # usage.json holds the real per-run token counts (npm run usage).
+          git add state/history.json state/usage.json
           if git diff --staged --quiet; then
             echo "No history change."
           else
