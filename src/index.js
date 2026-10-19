@@ -5,12 +5,13 @@ import { dirname, join } from 'node:path';
 
 import { retrieveAll, retrieveTavily } from './retrieve.js';
 import { normalize, prefilter } from './normalize.js';
-import { loadHistory, saveHistory, recentEventSummary, openThreads, updateThreads } from './history.js';
+import { loadHistory, saveHistory, recentEventSummary, openThreads, updateThreads, lookbackFromHistory } from './history.js';
 import { scoreCandidates } from './score.js';
+import { mergeDuplicateEvents, recentKeys } from './events.js';
 import { selectStories } from './select.js';
 import { writeDigest } from './write.js';
 import { renderHtml, renderText } from './render.js';
-import { sendMail, sendFailureNotice } from './mail.js';
+import { sendMail, sendFailureNotice, verifyMailLogin, maskAddress } from './mail.js';
 import { ingestFeedback, markFeedbackSeen } from './feedback.js';
 import { pickProvider } from './providers/index.js';
 import { createUsageTracker, appendUsage } from './usage.js';
@@ -40,6 +41,17 @@ const readText = async (rel) => readFile(p(rel), 'utf8');
 async function main() {
   const { TAVILY_API_KEY, GMAIL_USER, GMAIL_APP_PASSWORD, BRIEF_TO, LOOKBACK_HOURS } = process.env;
 
+  // A real run must be able to send. Check the login before spending 20+ minutes
+  // on scoring; the failure notice cannot be sent with a bad login either, so
+  // the Actions run is the only place this shows up.
+  if (!NO_SEND) {
+    if (!GMAIL_USER || !GMAIL_APP_PASSWORD || !BRIEF_TO) {
+      throw new Error('GMAIL_USER, GMAIL_APP_PASSWORD and BRIEF_TO must be set to send');
+    }
+    await verifyMailLogin({ user: GMAIL_USER, pass: GMAIL_APP_PASSWORD });
+    log(`gmail login verified; sending from ${maskAddress(GMAIL_USER)} to ${maskAddress(BRIEF_TO)}`);
+  }
+
   // No key of any kind is required: with none set this runs in rule-based mode.
   // `chain` is the ordered fallback list, always ending in the rule-based provider.
   const { primary: provider, chain } = pickProvider(process.env, log);
@@ -55,6 +67,8 @@ async function main() {
   const digestSchema = await readJson('schema/digest_schema.json');
   const scoringPrompt = await readText('prompts/scoring_prompt.txt');
   const digestPrompt = await readText('prompts/digest_prompt.txt');
+  const eventsPrompt = await readText('prompts/event_dedupe_prompt.txt');
+  const eventsSchema = await readJson('schema/event_groups_schema.json');
 
   const tz = preferences.timezone ?? 'America/Chicago';
   const owner = preferences.owner ?? 'Your';
@@ -65,10 +79,12 @@ async function main() {
     day: 'numeric',
   }).format(new Date());
 
-  // Monday reaches back further so the slow-moving weekly tracks are not empty
-  // after a quiet weekend.
-  const isMonday = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(new Date()) === 'Mon';
-  const lookbackHours = Number(LOOKBACK_HOURS) || (isMonday ? 72 : 30);
+  // History first: it decides how far back to look. The brief runs every day,
+  // so a fixed 72 h Monday lookback re-scored ~50 already-offered items, while a
+  // missed day (no brief 09-23 to 10-06) left a gap a fixed 30 h never covered.
+  const historyPath = p('state/history.json');
+  const history = await loadHistory(historyPath, { log });
+  const lookbackHours = Number(LOOKBACK_HOURS) || lookbackFromHistory(history);
   log(`starting brief for ${dateLabel} (lookback ${lookbackHours}h)`);
 
   // 1. Retrieve
@@ -90,17 +106,17 @@ async function main() {
   // 3. History, then fold in any feedback clicked since the last run. Feedback
   //    emails are NOT marked processed yet — that happens only after history is
   //    safely persisted (step 9), so a crash cannot silently eat a signal.
-  const historyPath = p('state/history.json');
-  const history = await loadHistory(historyPath, { log });
   let pendingFeedbackUids = [];
   if (!NO_SEND) {
     ({ uids: pendingFeedbackUids } = await ingestFeedback(history, {
       user: GMAIL_USER,
       pass: GMAIL_APP_PASSWORD,
+      from: BRIEF_TO,
       log,
     }));
   }
   preferences._feedbackWeights = history.feedbackWeights;
+  preferences._sourceOverrides = history.sourceOverrides;
 
   // 4. Score. Individual failed batches are rescored by rules inside
   //    scoreCandidates; meta reports how many needed rescue.
@@ -109,7 +125,8 @@ async function main() {
     schema: scoringSchema,
     preferences,
     historyText: recentEventSummary(history),
-    historyKeys: new Set(history.entries.map((e) => e.event_key)),
+    // Keys an event was merged from count as sent too (src/events.js).
+    historyKeys: recentKeys(history),
     openThreads: openThreads(history),
     provider,
     chain,
@@ -118,11 +135,33 @@ async function main() {
   });
   if (scored.length === 0) throw new Error('scoring returned nothing');
   if (meta.rescued > 0 && provider.name !== 'heuristic') {
+    // Partial fallback also disables the "Single source" badge downstream, so
+    // the footer has to say why, as the README promises.
     modeNote =
       meta.rescued === meta.batches
         ? 'AI scoring unavailable today — rule-based scoring used'
-        : modeNote;
+        : `${meta.rescued} of ${meta.batches} scoring batches used rule-based fallback`;
   }
+  // The on-time trigger (cloudflare/trigger) dispatches the brief at 7 AM. A
+  // brief started by GitHub's own backup cron means that dispatch did not happen
+  // (expired token, missed Cloudflare cron), and the footer is the one place
+  // that gets noticed.
+  if (process.env.EVENT_NAME === 'schedule') {
+    const note = 'on-time trigger missed: this brief came from GitHub\'s backup schedule; check the Cloudflare Worker and its token';
+    modeNote = modeNote ? `${modeNote}; ${note}` : note;
+  }
+  if (meta.filled > 0 && provider.name !== 'heuristic') {
+    const note = `${meta.filled} item(s) the model skipped were scored by rules`;
+    modeNote = modeNote ? `${modeNote}; ${note}` : note;
+  }
+
+  // 4b. One event, one key: merge reports the scorer keyed differently, and
+  //     map repeats of recently sent events onto their original key.
+  //     Only providers that scoring itself used are offered the call, so it can
+  //     never be the reason today's headlines reach a provider (e.g. Gemini's
+  //     free tier) that scoring did not need.
+  const dedupeChain = chain.filter((p) => meta.providers.includes(p.name));
+  await mergeDuplicateEvents(scored, history, { prompt: eventsPrompt, schema: eventsSchema, chain: dedupeChain, usage, log });
 
   // 5. Select
   const sections = selectStories(scored, history, preferences, { log });
@@ -194,7 +233,14 @@ async function main() {
   }
 
   // 8. Send
+  const logTokens = () => {
+    if (usage.isEmpty()) return;
+    const t = usage.snapshot().total;
+    log(`tokens this run: ${t.input + t.cacheRead + t.cacheWrite} in (${t.cacheWrite} cache-written), ${t.output} out (${t.thinking} thinking) across ${t.calls} calls, ${t.turns} turns`);
+  };
   if (NO_SEND) {
+    // Logged (not recorded) so a dry run can be costed before it ships.
+    logTokens();
     log('dry run — not sending email, not writing history');
     return;
   }
@@ -225,8 +271,7 @@ async function main() {
       candidates: candidates.length,
       stories: selected.length,
     });
-    const t = usage.snapshot().total;
-    log(`tokens this run: ${t.input + t.cacheRead} in, ${t.output} out across ${t.calls} calls`);
+    logTokens();
   }
   await markFeedbackSeen(pendingFeedbackUids, { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD, log });
   log(`done in ${((Date.now() - started) / 1000).toFixed(1)}s`);

@@ -4,7 +4,7 @@
  * triage system prompt + history block, which are identical across all batches in
  * a run — that's the bulk of the repeated input tokens.
  */
-import { historyBlock, scoringPayloadBlock, buildDigestUser } from './format.js';
+import { historyBlock, scoringPayloadBlock, buildDigestUser, eventsPayloadBlock } from './format.js';
 
 export const name = 'anthropic';
 export const label = 'Anthropic API';
@@ -18,7 +18,7 @@ function getClient() {
   return clientPromise;
 }
 
-export async function scoreBatch({ system, historyText, payload, schema, usage }) {
+export async function scoreBatch({ system, historyText, openThreads, payload, schema, usage }) {
   const client = await getClient();
   const model = process.env.TRIAGE_MODEL ?? 'claude-haiku-4-5-20251001';
   const res = await client.messages.create({
@@ -26,7 +26,7 @@ export async function scoreBatch({ system, historyText, payload, schema, usage }
     max_tokens: 8000,
     system: [
       { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: historyBlock(historyText), cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: historyBlock(historyText, openThreads), cache_control: { type: 'ephemeral' } },
     ],
     messages: [{ role: 'user', content: scoringPayloadBlock(payload) }],
     tools: [
@@ -55,6 +55,23 @@ export async function writeDigest({ system, payload, schema, usage }) {
     tool_choice: { type: 'tool', name: 'submit_digest' },
   });
 
+  usage?.record(model, res.usage);
+  const block = res.content.find((b) => b.type === 'tool_use');
+  if (!block) throw new Error('model returned no tool_use block');
+  return block.input;
+}
+
+export async function groupEvents({ system, payload, schema, usage }) {
+  const client = await getClient();
+  const model = process.env.TRIAGE_MODEL ?? 'claude-haiku-4-5-20251001';
+  const res = await client.messages.create({
+    model,
+    max_tokens: 2000,
+    system,
+    messages: [{ role: 'user', content: eventsPayloadBlock(payload) }],
+    tools: [{ name: 'submit_groups', description: 'Submit groups of ids that report the same event.', input_schema: schema }],
+    tool_choice: { type: 'tool', name: 'submit_groups' },
+  });
   usage?.record(model, res.usage);
   const block = res.content.find((b) => b.type === 'tool_use');
   if (!block) throw new Error('model returned no tool_use block');

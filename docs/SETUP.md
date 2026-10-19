@@ -12,7 +12,7 @@ The pipeline auto-detects a model provider from whichever credential you set,
 free options first. Set none and it still runs.
 
 Providers are a **cascade**, not a single choice: set more than one and if the
-first fails at 6:30 AM, the next takes over automatically.
+first fails at 3 AM, the next takes over automatically.
 
 | Path | Monthly cost | Quality | You need |
 |---|---|---|---|
@@ -51,8 +51,12 @@ character. The CLI-install step in the workflow runs one smoke call and prints
 25-minute run.
 
 **Gemini free tier** — create a key at https://aistudio.google.com/apikey (no
-card required). Becomes the `GEMINI_API_KEY` secret. Honest caveat: Google may
-use free-tier inputs to improve its products, and the scoring prompt contains
+card required). Becomes the `GEMINI_API_KEY` secret. Honest caveat: Google's
+free-tier terms say it uses inputs and outputs to improve its products, that
+human reviewers may read them, and that you should not submit personal
+information. Gemini only sees a day's data when Claude scoring fails over to
+it (the event-grouping step never reaches Gemini on its own), but the scoring
+prompt contains
 your interest profile — first name, town, employer type, the rental
 property, the home-purchase goal. The sign-up also asks you to attest you are
 building "for professional or business purposes." If either bothers you, skip
@@ -120,7 +124,8 @@ git remote add origin https://github.com/YOUR-USERNAME/daily-brief.git && git br
 ```
 
 Keep it **private**. It contains your interests, your locations, and your reading
-history. (Private repos get 2,000 free Actions minutes/month; this uses ~100.)
+history. (Private repos get 2,000 free Actions minutes/month, shared across all
+your private repos; this uses about 1,100. See the minutes note in section 4a.)
 
 ## 4. Add the secrets
 
@@ -144,10 +149,12 @@ one before it. To promote a specific one to the front, add a repository
 
 ## 4a. Breaking-news alerts
 
-A second workflow checks 13 fast primary sources every hour (plus the friends-and-family places) — National Weather
-Service alerts for your county and the property's, USGS earthquakes, FDA and CDC recalls,
-the Fed, and the wires — and emails you **only** when something genuinely urgent
-appears. It uses no model and no tokens.
+A second workflow checks fast primary sources (National Weather Service alerts for
+your county and the property's, USGS earthquakes, FDA and CDC recalls, the Fed,
+and the wires) plus the friends-and-family local feeds, and emails you **only**
+when something genuinely urgent appears. It uses no model and no tokens. Each
+run looks back to the last clean run, kept in the Actions cache, because GitHub
+skips most hourly crons.
 
 The bar is deliberately high and hard-capped at **3 alerts per day**, because an
 alert channel that cries wolf gets muted and then fails to deliver the one that
@@ -162,9 +169,22 @@ Edit that file to add or remove a place; each needs a local news feed in
 
 Nothing extra to configure — it uses the same Gmail secrets. To turn it off,
 delete `.github/workflows/breaking-alert.yml`. To halve its Actions usage at the
-cost of up to an hour's delay, change its cron to `5 */2 * * *`.
+cost of up to an hour's delay, change its cron to `5 1,3,11-23/2 * * *` (every
+other hour inside the waking window; `5 */2 * * *` would bring back the overnight
+runs the guard rejects but GitHub still bills).
 
-Actions minutes: measured on real Claude-subscription runs at 24–31 minutes/day
+Actions minutes (measured 2026-09-22 to 10-07 from job timings, each job rounded
+up to a whole minute): a full brief bills 25–28 min, every skipped or fast-failing
+trigger 1 min, an alert run 1 min. GitHub fires only ~4 of the 17 scheduled alert
+runs a day, so steady state was about **1,090 min/month** for this repo with
+27-minute briefs; at the 9-minute briefs measured on 2026-10-07 it was ~550.
+With the on-time trigger (section 4b) running the alert check every waking
+hour it is **~900/month** (about 1,000-1,150 with your other private repos, of
+the 2,000 free). Halving the Worker's alert frequency would save ~245. A day on
+which runs fail after scoring used to cost ~110 more; the guard now stops after
+two such failures. History of the estimate:
+
+Earlier estimate: measured on real Claude-subscription runs at 24–31 minutes/day
 (23.8 min on 2026-08-23 from a Mac; 27.0 and 31.3 min on 2026-09-18 on
 ubuntu-latest —
 the claude-code provider scores one batch at a time on purpose, so this is the
@@ -175,6 +195,40 @@ their timing does not change). Total **~1,200–1,450/month against the
 2,000/month free allowance** for private repos -- real headroom, but not the "practically free"
 margin the original estimate implied. If you add more scheduled automation
 later, re-check this number before you do.
+
+## 4b. On-time trigger (Cloudflare Worker, free)
+
+GitHub's own cron starts runs hours late. `cloudflare/trigger/` is a tiny
+Worker that calls GitHub's `workflow_dispatch` API on Cloudflare's scheduler:
+the brief at 3 AM local (plus a 4 AM catch-up only if no brief run
+started), and the alert check every hour from 7 AM to 10 PM. It has no public
+URL and holds one secret. Do these in order:
+
+1. **Merge first.** The workflows must already accept the `scheduled` input on
+   `main`, or every dispatch is rejected (HTTP 422).
+2. **Log in to Cloudflare** (opens a browser): `npx wrangler login`
+3. **Deploy:** `cd cloudflare/trigger && npx wrangler deploy`
+4. **Create the token** at github.com/settings/personal-access-tokens/new:
+   fine-grained, resource owner = you, **Only select repositories** → this
+   repo, Repository permissions → **Actions: Read and write** (Metadata
+   read-only is added automatically), nothing else. Set an expiry (up to a
+   year) and put the date in your calendar. A stolen token can start, cancel
+   and delete runs and download run logs, but cannot read secrets or code.
+5. **Store it in the Worker** (paste at the prompt; it is never shown):
+   `cd cloudflare/trigger && npx wrangler secret put GITHUB_TOKEN`
+6. **Check it:** after the next hour's minute 1, the Actions tab shows a
+   `workflow_dispatch` alert run, and the Cloudflare dashboard (Workers →
+   brief-trigger → Logs) shows "started breaking-alert.yml".
+
+To rotate the token, repeat steps 4-5. To change the delivery hour or alert
+hours, edit `BRIEF_HOUR` / `ALERT_FIRST_HOUR` / `ALERT_LAST_HOUR` in
+`cloudflare/trigger/src/index.js` and redeploy. Never put the token in
+`cloudflare/trigger/.dev.vars` and commit it (that file is gitignored for
+this reason).
+
+Also worth checking once: on a Claude subscription, claude.ai/settings/data-privacy-controls
+decides whether your conversations, including these headless runs, may be
+used to train models.
 
 ## 5. Test it
 
@@ -191,17 +245,17 @@ it unambiguously.
 Then run again with dry run unchecked. The brief should arrive within a minute
 or two.
 
-After that it runs itself at ~6:30 AM your time, daily.
+After that it runs itself at ~3 AM your time, daily.
 
 ## 6. Watch for these
 
 - **First run has no history**, so novelty scoring is blind and you may see a
   story that has circulated for days. It corrects itself by day three.
-- **GitHub cron drifts** — usually 5–20 minutes, but the first day this repo
-  was live (2026-09-18) the 10:30 UTC cron fired at 14:35, four hours late.
-  The guard step handles this: a scheduled run proceeds once per local date
-  at or after 6 AM, so drift delays the brief rather than losing it. 6:30
-  means "6:30 on a good day."
+- **GitHub cron drifts** by hours (median ~5.5 h for the 7 AM brief in
+  Sept/Oct 2026), which is why the Cloudflare Worker (section 4b) starts both
+  workflows. GitHub's crons are backups: a brief that came from one says so in
+  its footer ("on-time trigger missed"). If you see that, check the Worker and
+  its token. A run takes about 9 minutes, so the brief lands around 3:10 AM.
 - **GitHub disables scheduled workflows after 60 days of repo inactivity.** The
   daily history commit should prevent it, and GitHub emails you first. If the
   brief stops arriving, check the Actions tab.
@@ -222,7 +276,7 @@ missing-package.json error — that is the most common cause of "it didn't work.
 
 ```bash
 npm install
-npm test                              # 183 offline tests, no keys needed
+npm test                              # 363 offline tests, no keys needed
 npm run dry-run                       # build a brief, send nothing
 npm run alert-dry                     # check the alert path, send nothing
 npm run check-feeds                   # verify every source is alive

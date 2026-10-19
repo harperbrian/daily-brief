@@ -88,7 +88,7 @@ two disagree, the config wins and the document is wrong, so keep them together.
 ## 7. Check
 
 ```bash
-npm test              # 183 offline tests
+npm test              # 363 offline tests
 npm run dry-run       # builds a brief to out/ with no keys, rule-based
 npm run alert-dry     # checks the alert path, sends nothing
 ```

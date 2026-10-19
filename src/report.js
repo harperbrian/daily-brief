@@ -56,7 +56,9 @@ async function usageReport() {
   console.log(`\n${B('Token usage')} ${dim(`— ${s.runs} run(s) over ${s.days} day(s)`)}\n`);
   console.log(`  input          ${n(s.total.input).padStart(12)}`);
   if (s.total.cacheRead) console.log(`  cached input   ${n(s.total.cacheRead).padStart(12)} ${dim('(billed at a discount)')}`);
+  if (s.total.cacheWrite) console.log(`  cache-written  ${n(s.total.cacheWrite).padStart(12)} ${dim('(input stored for reuse)')}`);
   console.log(`  output         ${n(s.total.output).padStart(12)}`);
+  if (s.total.thinking) console.log(`    of which thinking ${n(s.total.thinking).padStart(8)}`);
   console.log(`  model calls    ${n(s.total.calls).padStart(12)}`);
   console.log(`\n  ${B('per day')}        ${n(s.perDay).padStart(12)} tokens`);
   console.log(`  ${B('per week')}       ${n(s.weekly).padStart(12)} tokens`);

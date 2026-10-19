@@ -19,11 +19,15 @@ export function createUsageTracker() {
     record(model, usage) {
       if (!usage) return;
       const key = model ?? 'unknown';
-      const cur = byModel.get(key) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, calls: 0 };
+      const cur = byModel.get(key) ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0, turns: 0, calls: 0 };
       cur.input += usage.input_tokens ?? 0;
       cur.output += usage.output_tokens ?? 0;
       cur.cacheRead += usage.cache_read_input_tokens ?? 0;
       cur.cacheWrite += usage.cache_creation_input_tokens ?? 0;
+      // Thinking is billed as output and already inside output_tokens; kept
+      // separately so its share is visible.
+      cur.thinking += usage.output_tokens_details?.thinking_tokens ?? 0;
+      cur.turns += usage.num_turns ?? 1;
       cur.calls += 1;
       byModel.set(key, cur);
     },
@@ -35,9 +39,11 @@ export function createUsageTracker() {
           output: a.output + m.output,
           cacheRead: a.cacheRead + m.cacheRead,
           cacheWrite: a.cacheWrite + m.cacheWrite,
+          thinking: a.thinking + (m.thinking ?? 0),
+          turns: a.turns + (m.turns ?? 0),
           calls: a.calls + m.calls,
         }),
-        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, calls: 0 }
+        { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0, turns: 0, calls: 0 }
       );
       return { models, total };
     },
@@ -103,14 +109,17 @@ export function summarize(runs) {
       output: a.output + (r.output ?? 0),
       cacheRead: a.cacheRead + (r.cacheRead ?? 0),
       cacheWrite: a.cacheWrite + (r.cacheWrite ?? 0),
+      thinking: a.thinking + (r.thinking ?? 0),
       calls: a.calls + (r.calls ?? 0),
     }),
-    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, calls: 0 }
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0, calls: 0 }
   );
 
   // Extrapolate to a full week if fewer than 7 days of data exist.
   const days = Math.max(1, Math.min(7, Math.ceil((Date.now() - Math.min(...recent.map((r) => r.at))) / 86400e3)));
-  const perDay = (tot.input + tot.output + tot.cacheRead) / days;
+  // Cache writes are real input (billed at 1.25x on the API); leaving them out
+  // under-reported the 2026-10-07 brief by 125,764 tokens (~25%).
+  const perDay = (tot.input + tot.output + tot.cacheRead + tot.cacheWrite) / days;
   const weekly = perDay * 7;
 
   return {

@@ -43,7 +43,10 @@ export async function loadHistory(path, { log }) {
       feedbackLog: raw.feedbackLog ?? [],
     };
   } catch (err) {
-    if (err.code !== 'ENOENT') log(`history unreadable, starting fresh: ${err.message}`, 'warn');
+    // Only a MISSING file means "first run". A file that exists but will not
+    // parse (a bad hand edit, a merge marker) used to start fresh too, and the
+    // next save then overwrote every learned weight, mute, thread and alert.
+    if (err.code !== 'ENOENT') throw new Error(`state/history.json is unreadable, refusing to overwrite it: ${err.message}`);
     return {
       entries: [], feedbackWeights: emptyWeights(), muted: {}, alerts: [], threads: {},
       sourceOverrides: {}, quietThreads: {}, slowFeeds: {}, verbosityHints: {},
@@ -68,6 +71,12 @@ export async function saveHistory(path, history, selected, { log }) {
     geography: s.geography,
     source: s.source,
     feed_id: s.feed_id,
+    // The thread this story belongs to, so "already knew this" can quiet the
+    // thread select.js actually checks.
+    thread: s.continues_thread ?? s.event_key,
+    // Other keys this event was reported under today (src/events.js), so a
+    // later report under one of them still counts as already sent.
+    ...(s.merged_keys?.length ? { aliases: s.merged_keys.slice(0, 10) } : {}),
     total_score: s.total_score,
     sent_at: now,
   }));
@@ -88,7 +97,10 @@ export async function saveHistory(path, history, selected, { log }) {
         alerts: (history.alerts ?? []).filter((a) => (a.at ?? 0) >= cutoff),
         threads: pruneThreads(history.threads ?? {}),
         sourceOverrides: history.sourceOverrides ?? {},
-        quietThreads: history.quietThreads ?? {},
+        // A quieted thread that has not been sent for 90 days is gone anyway.
+        quietThreads: Object.fromEntries(
+          Object.entries(history.quietThreads ?? {}).filter(([, at]) => at >= now - 90 * 24 * 3600e3)
+        ),
         slowFeeds: history.slowFeeds ?? {},
         verbosityHints: history.verbosityHints ?? {},
         feedComplaints: history.feedComplaints ?? {},
@@ -194,4 +206,15 @@ export function recentEventSummary(history, limit = 60) {
     .slice(-limit)
     .map((e) => `${new Date(e.sent_at).toISOString().slice(0, 10)} :: ${e.event_key} :: ${e.title}`)
     .join('\n');
+}
+
+/**
+ * Hours since the last brief actually sent, plus a 6 h overlap, clamped to
+ * 30..72. 30 h on a normal day; up to 72 h after missed days.
+ */
+export function lookbackFromHistory(history, now = Date.now()) {
+  const last = Math.max(0, ...(history.entries ?? []).map((e) => e.sent_at ?? 0));
+  if (!last) return 30;
+  const hours = Math.ceil((now - last) / 3600e3) + 6;
+  return Math.min(72, Math.max(30, hours));
 }

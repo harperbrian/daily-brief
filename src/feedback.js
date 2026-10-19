@@ -5,10 +5,12 @@
  * NOT the delivery address). This reads them on the next run and folds them into
  * history.json.
  *
- * Two-phase on purpose: ingestFeedback() only reads and applies signals in
- * memory; markFeedbackSeen() flags the messages as processed and is called only
- * AFTER history is safely written. If the run crashes in between, the worst case
- * is a signal applied twice (a ±2 nudge), never a signal silently lost.
+ * Exactly-once by Message-ID: every applied signal records its message's
+ * Message-ID in history.feedbackLog, which is committed with the rest of
+ * history. A message whose id is already logged is skipped. If the run, the
+ * save or the git push fails, the id never lands and the signal is applied on
+ * the next run. \Seen is set afterwards only so the inbox looks tidy; it is
+ * no longer what decides "processed".
  *
  * Deliberately gradual, per the original build pack: one click nudges a weight,
  * it does not rewrite preferences. Large shifts require repeated signals.
@@ -61,7 +63,10 @@ function connect(user, pass) {
   });
 }
 
-export async function ingestFeedback(history, { user, pass, log }) {
+/** Matches history's 14-day memory: a signal older than that has no entry to resolve against. */
+const SEARCH_DAYS = 14;
+
+export async function ingestFeedback(history, { user, pass, from, log }) {
   if (!user || !pass) return { uids: [] };
 
   let client;
@@ -71,29 +76,36 @@ export async function ingestFeedback(history, { user, pass, log }) {
     await client.connect();
     const lock = await client.getMailboxLock('INBOX');
     try {
-      const since = new Date(Date.now() - 7 * 24 * 3600e3);
-      // seen:false — anything already processed was flagged by markFeedbackSeen.
-      const found = await client.search({ since, subject: 'brief-feedback:', seen: false });
+      const since = new Date(Date.now() - SEARCH_DAYS * 24 * 3600e3);
+      // The subject is matched here, not by the server: Gmail's IMAP SUBJECT
+      // search matches whole words, which is not a contract worth relying on.
+      // Only the reader's own address counts; otherwise anyone who guesses an
+      // event key could mute a category by email.
+      const criteria = { since, ...(from ? { from } : {}) };
+      const found = await client.search(criteria);
       if (!found || found.length === 0) {
         log('feedback: none pending');
         return { uids: [] };
       }
 
-      let applied = 0;
+      const msgs = [];
       for await (const msg of client.fetch(found, { envelope: true, uid: true })) {
-        const parsed = parseSubject(msg.envelope?.subject ?? '');
-        if (!parsed) continue;
-        applyFeedback(history, parsed, log);
-        uids.push(msg.uid);
-        applied++;
+        msgs.push({ uid: msg.uid, subject: msg.envelope?.subject ?? '', messageId: msg.envelope?.messageId ?? null });
       }
-      log(`feedback: applied ${applied} signal(s)`);
+      const result = collectFeedback(history, msgs, log);
+      uids.push(...result.uids);
+      log(`feedback: applied ${result.applied} signal(s)${result.skipped ? `, ${result.skipped} already processed` : ''}`);
     } finally {
       lock.release();
     }
   } catch (err) {
-    // Feedback is a nicety; never let it break the brief.
-    log(`feedback ingestion skipped: ${String(err.message ?? err)}`, 'warn');
+    // Feedback is a nicety; never let it break the brief. imapflow reports any
+    // IMAP NO/BAD as "Command failed" and puts the reason in responseText, so
+    // log that too or a rejected login is unreadable (as on 2026-09-30).
+    const detail = [err.responseText, err.serverResponseCode, err.authenticationFailed ? 'authentication failed' : '']
+      .filter(Boolean)
+      .join('; ');
+    log(`feedback ingestion skipped: ${String(err.message ?? err)}${detail ? ` (${detail})` : ''}`, 'warn');
   } finally {
     try {
       await client?.logout();
@@ -101,6 +113,33 @@ export async function ingestFeedback(history, { user, pass, log }) {
   }
 
   return { uids };
+}
+
+/**
+ * Pure core of ingestion, exported for tests. Applies each recognised, not yet
+ * processed message once and returns the uids worth flagging \Seen. A message
+ * whose event is no longer in history is left alone (not flagged, not logged).
+ */
+export function collectFeedback(history, msgs, log) {
+  const processed = new Set((history.feedbackLog ?? []).map((e) => e.message_id).filter(Boolean));
+  const uids = [];
+  let applied = 0;
+  let skipped = 0;
+  for (const msg of msgs) {
+    const parsed = parseSubject(msg.subject ?? '');
+    if (!parsed) continue;
+    if (msg.messageId && processed.has(msg.messageId)) {
+      skipped++;
+      uids.push(msg.uid);
+      continue;
+    }
+    if (applyFeedback(history, { ...parsed, messageId: msg.messageId }, log)) {
+      if (msg.messageId) processed.add(msg.messageId);
+      uids.push(msg.uid);
+      applied++;
+    }
+  }
+  return { uids, applied, skipped };
 }
 
 /** Call only after history has been persisted. Reconnects briefly to set flags. */
@@ -127,7 +166,7 @@ export async function markFeedbackSeen(uids, { user, pass, log }) {
   }
 }
 
-function parseSubject(subject) {
+export function parseSubject(subject) {
   const m = new RegExp(`brief-feedback:\\s*(${SIGNAL_NAMES.join('|')})\\s+(\\S+)`, 'i').exec(subject);
   return m ? { action: m[1].toLowerCase(), eventKey: m[2] } : null;
 }
@@ -135,12 +174,15 @@ function parseSubject(subject) {
 /** Exported for tests: the weighting logic is worth verifying without IMAP. */
 export const applyFeedbackForTest = applyFeedback;
 
-function applyFeedback(history, { action, eventKey }, log) {
-  // Resolve the event back to what it actually was, via history.
-  const entry = history.entries.find((e) => e.event_key === eventKey);
+/** Returns true when the signal resolved to a sent story and was applied. */
+function applyFeedback(history, { action, eventKey, messageId }, log) {
+  // Resolve the event back to what it actually was, via history. The most
+  // recent send wins: a repeated event_key (allowed at novelty >= 5) should
+  // credit the copy the reader just saw.
+  const entry = history.entries.findLast((e) => e.event_key === eventKey);
   if (!entry) {
-    log(`  feedback for unknown event_key ${eventKey}; ignored`, 'warn');
-    return;
+    log(`  feedback for unknown event_key ${eventKey}; left for a later run`, 'warn');
+    return false;
   }
 
   history.feedbackWeights ??= { categories: {}, sources: {}, geographies: {} };
@@ -150,6 +192,7 @@ function applyFeedback(history, { action, eventKey }, log) {
   history.feedbackLog.push({
     at: Date.now(),
     action,
+    message_id: messageId ?? null,
     event_key: eventKey,
     title: entry.title,
     category: entry.category,
@@ -160,14 +203,14 @@ function applyFeedback(history, { action, eventKey }, log) {
   const signal = SIGNALS[action];
   if (!signal) {
     log(`  unknown feedback signal "${action}"; ignored`, 'warn');
-    return;
+    return true;
   }
 
   if (signal.mute) {
-    if (!entry.category) return;
+    if (!entry.category) return true;
     history.muted[entry.category] = Date.now() + MUTE_DAYS * 24 * 3600e3;
     log(`  muted category "${entry.category}" for ${MUTE_DAYS} days`);
-    return;
+    return true;
   }
 
   const applied = [];
@@ -201,9 +244,13 @@ function applyFeedback(history, { action, eventKey }, log) {
   // "already knew this" is a complaint about TIMING, not topic. It must not
   // touch the category — the subject was fine, the moment was wrong.
   if (signal.staleThread) {
+    // Keyed by THREAD, which is what select.js checks; older entries without a
+    // recorded thread fall back to their own event_key (the thread key when
+    // the story started it).
+    const threadKey = entry.thread ?? entry.event_key;
     history.quietThreads ??= {};
-    history.quietThreads[entry.event_key] = Date.now();
-    applied.push(`thread "${entry.event_key}" resurfaces only on a stage change`);
+    history.quietThreads[threadKey] = Date.now();
+    applied.push(`thread "${threadKey}" resurfaces only on a stage change`);
   }
   if (signal.slowFeed && entry.feed_id) {
     history.slowFeeds ??= {};
@@ -240,6 +287,7 @@ function applyFeedback(history, { action, eventKey }, log) {
   }
 
   log(`  ${action} (${signal.note}): ${applied.join(', ') || 'recorded'}`);
+  return true;
 }
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));

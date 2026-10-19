@@ -1,16 +1,21 @@
 name: Breaking Alert
 
 on:
-  # Hourly. The job itself skips overnight hours, so you are not woken at 3 AM
-  # for a tornado warning four counties away.
-  # To halve the Actions minutes at the cost of up to an hour's delay,
-  # change this to '5 */2 * * *'.
+  # Primary trigger: the Cloudflare Worker in cloudflare/trigger dispatches this
+  # every hour from 7 AM to 10 PM local with scheduled=true. GitHub's own cron
+  # fires only ~1 in 5 times, so it is kept as a sparse BACKUP (every 3 h inside
+  # the waking window for US Eastern; shift the UTC hours for your zone). Each
+  # check looks back to the last clean run, so a missed hour is delayed, not lost.
   schedule:
-    - cron: '5 * * * *'
+    - cron: '23 1,13,16,19,22 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Check for alerts but do not email'
+        type: boolean
+        default: false
+      scheduled:
+        description: 'Set by the on-time trigger: apply the waking-hours check like a cron run'
         type: boolean
         default: false
 
@@ -19,10 +24,18 @@ on:
 concurrency:
   group: brief-state
   cancel-in-progress: false
+  # Without this GitHub keeps ONE pending run per group and a newly queued run
+  # cancels it: on 2026-09-30 an alert cancelled a waiting brief, and on 10-05 a
+  # brief cancelled a waiting alert. With hourly dispatches that would be common.
+  # `max` lets runs wait in line instead (FIFO, up to 100).
+  queue: max
 
 jobs:
   alert:
-    runs-on: ubuntu-latest
+    # Real sends only from main (see daily-brief.yml); dry runs anywhere.
+    if: github.ref == 'refs/heads/main' || inputs.dry_run
+    # Pinned with the brief: ubuntu-latest moves to 26.04 from 2026-10-19.
+    runs-on: ubuntu-24.04
     env:
       # Your IANA timezone. Keep it equal to `timezone` in config/preferences.json.
       LOCAL_TZ: America/Chicago
@@ -31,7 +44,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Check out the branch tip when the job STARTS, not the commit that was
           # current when GitHub queued the event. On 2026-09-22 the second DST
@@ -43,18 +56,26 @@ jobs:
 
       - name: Waking hours local?
         id: guard
+        env:
+          # Passed as env, never spliced into the script: a dispatch input is
+          # caller-supplied text.
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULED_INPUT: ${{ inputs.scheduled }}
         run: |
           HOUR=$(TZ=$LOCAL_TZ date +%H)
           echo "local hour: $HOUR"
-          # 07:00-22:59 local. Manual runs always proceed.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || { [ "$HOUR" -ge 7 ] && [ "$HOUR" -le 22 ]; }; then
+          # 07:00-22:59 local. A manual run always proceeds; a dispatch from
+          # the on-time trigger (scheduled=true) is checked like a cron run.
+          MANUAL=false
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$SCHEDULED_INPUT" != "true" ]; then MANUAL=true; fi
+          if [ "$MANUAL" = "true" ] || { [ "$((10#$HOUR))" -ge 7 ] && [ "$((10#$HOUR))" -le 22 ]; }; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "Overnight; skipping."
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.guard.outputs.run == 'true'
         with:
           node-version: '24'
@@ -64,6 +85,19 @@ jobs:
         if: steps.guard.outputs.run == 'true'
         run: npm ci
 
+      # The check looks back to the last run that finished cleanly, not a fixed
+      # two hours: GitHub skips most hourly crons, and a failed send must not
+      # lose what it was sending. The record lives in the Actions cache, not in
+      # state/, so it never needs a commit. Each clean run saves a new entry
+      # (cache keys are immutable); restore-keys picks the newest one.
+      - name: Restore last clean check
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: state-cache/alert-last-check.json
+          key: alert-last-check-${{ github.run_id }}
+          restore-keys: alert-last-check-
+
       # No model credentials here on purpose: urgency detection is rule-based, so
       # a quiet hour costs seconds and zero tokens.
       - name: Check for breaking news
@@ -72,7 +106,20 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           BRIEF_TO: ${{ secrets.BRIEF_TO }}
+          ALERT_LAST_CHECK_FILE: state-cache/alert-last-check.json
         run: npm run alert ${{ inputs.dry_run && '-- --dry-run' || '' }}
+
+      # An `if:` without a status function implies success(), so a failed check
+      # (a send that threw) never reaches this step and the window does not
+      # move. The script also writes the record only on success and never on a
+      # dry run. Saved before the history commit: if that push fails, the next
+      # run does not re-fetch and re-send everything this one already sent.
+      - name: Save last clean check
+        if: steps.guard.outputs.run == 'true' && !inputs.dry_run && hashFiles('state-cache/alert-last-check.json') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: state-cache/alert-last-check.json
+          key: alert-last-check-${{ github.run_id }}
 
       - name: Commit alert history
         if: steps.guard.outputs.run == 'true' && !inputs.dry_run

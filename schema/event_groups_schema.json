@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["groups"],
+  "properties": {
+    "groups": {
+      "type": "array",
+      "description": "Groups of ids that report the same real-world event. Two or more ids each; an id appears at most once.",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    }
+  }
+}

@@ -41,6 +41,11 @@ DETAIL LEVELS — each section carries a `detail` value. Respect it exactly.
 Over-writing a "brief" or "line" story is the most common failure here. Fifteen
 full-length entries is a dashboard, not a briefing.
 
+A story may also carry `verbosity: "brief"`. The reader has said summaries in that
+category run too long: keep its summary to the shortest form its detail level
+allows (one sentence even in a "full" section) and its why_it_matters to one
+short clause.
+
 WHY IT MATTERS
 Name the channel, do not assert importance. "Your Dane County property tax
 bill rises about $180 on a $300k home" beats "this could affect local

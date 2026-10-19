@@ -42,17 +42,28 @@ export function quakeMattersTo(quake, place) {
 export function parseFeature(f) {
   const [lng, lat] = f.geometry?.coordinates ?? [];
   const p = f.properties ?? {};
-  return { id: f.id, mag: p.mag, place: p.place, time: p.time, alert: p.alert, tsunami: p.tsunami === 1, url: p.url, lat, lng };
+  return { id: f.id, mag: p.mag, place: p.place, time: p.time, updated: p.updated, alert: p.alert, tsunami: p.tsunami === 1, url: p.url, lat, lng };
 }
+
+/** A stalled USGS response must not hold the hourly job until its timeout. */
+const FETCH_TIMEOUT_MS = 15000;
 
 /**
  * Synthesizes alert candidates for quakes near any people place. Returns []
  * on any failure — a USGS outage must never break the hourly run.
+ *
+ * The window applies to the quake's last USGS update, not its origin time:
+ * a M5.4 revised to M5.6, or a PAGER level added hours later, is when it
+ * starts to matter. Alerts are keyed by USGS event id (usgs_id), so a quake
+ * already sent is not sent again when it is revised.
  */
 export async function nearbyQuakes(places, { lookbackHours = 2, log, fetchImpl = fetch } = {}) {
   let features;
   try {
-    const res = await fetchImpl(USGS_URL, { headers: { 'User-Agent': 'daily-brief (github.com/harperbrian/daily-brief)' } });
+    const res = await fetchImpl(USGS_URL, {
+      headers: { 'User-Agent': 'daily-brief (github.com/harperbrian/daily-brief)' },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     ({ features } = await res.json());
   } catch (err) {
@@ -63,7 +74,7 @@ export async function nearbyQuakes(places, { lookbackHours = 2, log, fetchImpl =
   const out = [];
   for (const f of features ?? []) {
     const q = parseFeature(f);
-    if (!(q.time >= cutoff)) continue;
+    if (!(Math.max(q.time ?? 0, q.updated ?? 0) >= cutoff)) continue;
     for (const place of places) {
       const hit = quakeMattersTo(q, place);
       if (!hit) continue;
@@ -75,6 +86,7 @@ export async function nearbyQuakes(places, { lookbackHours = 2, log, fetchImpl =
         snippet: `USGS: ${q.place}. ${hit.reason}. People there: ${place.people}.`,
         source: 'USGS',
         feed_id: 'usgs_geojson',
+        usgs_id: q.id,
         track: 'people',
         place: place.id,
         tier: 1,

@@ -6,7 +6,7 @@
  * Honest caveat, also in docs/SETUP.md: Google may use free-tier inputs to
  * improve its products, and the scoring prompt contains the interest profile.
  */
-import { buildScoringUser, buildDigestUser } from './format.js';
+import { buildScoringUser, buildDigestUser, eventsPayloadBlock } from './format.js';
 import { extractJson } from './json-util.js';
 
 export const name = 'gemini';
@@ -77,11 +77,15 @@ async function call(system, user, schema, usage) {
   return extractJson(text);
 }
 
-export async function scoreBatch({ system, historyText, payload, schema, usage }) {
-  const out = await call(system, buildScoringUser(historyText, payload), schema, usage);
+export async function scoreBatch({ system, historyText, openThreads, payload, schema, usage }) {
+  const out = await call(system, buildScoringUser(historyText, payload, openThreads), schema, usage);
   return out.stories ?? [];
 }
 
 export async function writeDigest({ system, payload, schema, usage }) {
   return call(system, buildDigestUser(payload), schema, usage);
+}
+
+export async function groupEvents({ system, payload, schema, usage }) {
+  return call(system, eventsPayloadBlock(payload), schema, usage);
 }

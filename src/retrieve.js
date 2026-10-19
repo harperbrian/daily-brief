@@ -10,13 +10,15 @@ const parser = new Parser({
 
 /** Feeds that publish in bursts. An empty result is normal, not a failure worth reporting. */
 const BURSTY = new Set([
-  'fed_press', 'sec_press', 'nia_news', 'fda_press', 'delta_news', 'federal_register',
+  'fed_press', 'sec_press', 'fda_federal_register', 'delta_news', 'federal_register',
   // Weather and seismic alerts: empty is the normal, good case. Warning about
   // these every quiet day would train you to ignore the health footer entirely.
   'nws_home', 'nws_property', 'usgs_quakes',
   // Publish in irregular bursts: quarterly IR releases, layoff waves, weekly
   // essays, slow research feeds. Silence carries no signal about feed health.
-  'layoffs_fyi', 'stratechery', 'sd_relationships', 'ars_tech_lab',
+  // (Removed 2026-10-07: dead feeds were hiding in this list. An empty bursty
+  // feed never warns.)
+  'stratechery', 'sd_relationships', 'ars_tech_lab',
 ]);
 
 const HARD_TIMEOUT_MS = 20000;
@@ -55,7 +57,7 @@ export async function retrieveAll(feeds, { lookbackHours, log }) {
 
   const items = settled.flatMap((s) => s.items);
   const failures = settled.filter((s) => !s.ok);
-  // Alert-only feeds run hourly on a two-hour window; a small-town paper
+  // Alert-only feeds are checked on short windows (since the last alert run); a small-town paper
   // publishing nothing in that window is the normal case, not a health signal.
   const empty = settled.filter((s) => s.ok && s.items.length === 0 && !BURSTY.has(s.feed.id) && !s.feed.alert_only);
 

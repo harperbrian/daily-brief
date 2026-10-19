@@ -103,7 +103,7 @@ direction, that is worth noticing.
 
 ## 3. The golden set (measuring whether any of this works)
 
-The 145 tests in `npm test` check *mechanism* — that the formula is monotone,
+The 363 tests in `npm test` check *mechanism* — that the formula is monotone,
 that caps hold, that bad model output is coerced safely. None of them can tell
 you whether the fifteen stories arriving each morning are the **right** fifteen.
 Only you can say that.

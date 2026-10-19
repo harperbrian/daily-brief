@@ -24,7 +24,7 @@
     "@anthropic-ai/sdk": "^0.71.0",
     "fast-xml-parser": "^5.10.1",
     "imapflow": "^1.6.5",
-    "nodemailer": "^7.0.9",
+    "nodemailer": "^10.0.16",
     "rss-parser": "^3.13.0"
   }
 }

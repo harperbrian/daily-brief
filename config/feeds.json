@@ -8,8 +8,8 @@
       "source_class": "original_reporting",
       "lean": "center",
       "alert": true,
-      "name": "AP Top News (mirror)",
-      "url": "https://feedx.net/rss/ap.xml",
+      "name": "AP (via Google News)",
+      "url": "https://news.google.com/rss/search?q=site:apnews.com+when:1d&hl=en-US&gl=US&ceid=US:en",
       "note": "Third-party mirror; AP retired public RSS. Tier 2 because the mirror is unaffiliated."
     },
     {
@@ -375,24 +375,23 @@
       "url": "https://www.the74million.org/feed/"
     },
     {
-      "id": "nia_news",
+      "id": "sciencedaily_aging",
       "track": "health",
-      "tier": 1,
-      "source_class": "primary",
-      "lean": "primary",
-      "name": "NIH National Institute on Aging",
-      "url": "https://www.nia.nih.gov/news/rss.xml",
+      "tier": 2,
+      "source_class": "established",
+      "lean": "center",
+      "name": "ScienceDaily — Healthy Aging",
+      "url": "https://www.sciencedaily.com/rss/health_medicine/healthy_aging.xml",
       "note": "Replaced the main NIH news feed, which began returning 403 to all non-browser clients. NIA is a better fit for the longevity interest anyway."
     },
     {
-      "id": "fda_press",
+      "id": "fda_federal_register",
       "track": "health",
       "tier": 1,
       "source_class": "primary",
       "lean": "primary",
-      "alert": true,
-      "name": "FDA Press Announcements",
-      "url": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/rss.xml"
+      "name": "Federal Register — FDA rules",
+      "url": "https://www.federalregister.gov/api/v1/documents.rss?conditions%5Bagencies%5D%5B%5D=food-and-drug-administration&conditions%5Btype%5D%5B%5D=RULE&conditions%5Btype%5D%5B%5D=PRORULE"
     },
     {
       "id": "cdc_newsroom",
@@ -467,16 +466,6 @@
       "lean": "center-left",
       "name": "Ars Technica — Technology Lab",
       "url": "https://feeds.arstechnica.com/arstechnica/technology-lab"
-    },
-    {
-      "id": "layoffs_fyi",
-      "track": "career",
-      "tier": 2,
-      "source_class": "trade",
-      "lean": "center",
-      "name": "Layoffs.fyi",
-      "url": "https://layoffs.fyi/feed/",
-      "note": "Bursty by nature; quiet weeks are good news."
     },
     {
       "id": "stratechery",

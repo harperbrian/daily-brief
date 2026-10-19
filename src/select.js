@@ -41,6 +41,12 @@ export function selectStories(scored, history, preferences, { log }) {
   const now = Date.now();
   const mutedUntil = history.muted ?? {};
 
+  // Retrieval facts for every copy of an event, gathered BEFORE the filter. The
+  // scorer marks most items not-includable, so other outlets' copies of the same
+  // event were filtered out before clustering and never added their leans: a
+  // story covered left and right could still be badged "Single source so far".
+  const coverage = eventCoverage(scored);
+
   // 1. Filter.
   let pool = scored.filter((s) => {
     if (s.prompt_injection_attempt) {
@@ -54,7 +60,7 @@ export function selectStories(scored, history, preferences, { log }) {
   });
 
   // 2. Cluster.
-  pool = collapseByEventKey(pool);
+  pool = collapseByEventKey(pool).map((story) => withCoverage(story, coverage.get(story.event_key || story.id)));
 
   // 3. Cross-spectrum corroboration. When outlets that disagree editorially both
   //    report something, it is far more likely to be a fact than a framing
@@ -63,8 +69,12 @@ export function selectStories(scored, history, preferences, { log }) {
 
   // 4. Long-run allocation deficit, bounded so it can reorder near-ties but can
   //    never promote a weak story over a strong one.
-  const mix = rollingMix(history, cfg.window_days ?? 30);
-  const warm = mix.total >= (cfg.warmup_days ?? 10);
+  const mix = rollingMix(history, cfg.window_days ?? 30, preferences.timezone ?? 'America/Chicago');
+  // Warm-up is measured in DAYS of briefs. It compared a story count to a day
+  // count, so a single 12-story brief already counted as "warm" and the next run
+  // applied up to +/-9 from one day's mix. History keeps 14 days of entries, so
+  // the effective window is min(window_days, 14).
+  const warm = mix.days >= (cfg.warmup_days ?? 10);
   if (warm) {
     for (const s of pool) {
       s.allocation_bonus = allocationBonus(s.category, mix, cfg);
@@ -189,12 +199,14 @@ function overReservedCap(story, chosen, reserved) {
  * Share of recent briefs by category, used for the allocation deficit. Reads the
  * history entries the pipeline already writes, so this needs no new persistence.
  */
-export function rollingMix(history, windowDays) {
+export function rollingMix(history, windowDays, tz = 'America/Chicago') {
   const cutoff = Date.now() - windowDays * 24 * 3600e3;
   const recent = (history.entries ?? []).filter((e) => (e.sent_at ?? 0) >= cutoff);
   const counts = {};
   for (const e of recent) counts[e.category] = (counts[e.category] ?? 0) + 1;
-  return { counts, total: recent.length };
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: tz });
+  const days = new Set(recent.map((e) => day.format(new Date(e.sent_at)))).size;
+  return { counts, total: recent.length, days };
 }
 
 /**
@@ -222,14 +234,31 @@ export function threadAdvanced(story, history) {
   const threads = history.threads ?? {};
   const key = story.continues_thread ?? story.event_key;
   const thread = threads[key];
+  // "Already knew this" on a thread: from then on only a real stage change gets
+  // through; a novelty score alone no longer does.
+  const quiet = Boolean(history.quietThreads?.[key]);
+  // The dedupe call matched this to an earlier send (src/events.js). The scorer
+  // rated novelty without knowing that, so only a real stage change counts.
+  const repeat = Boolean(story.repeat_of);
   if (!thread) {
     // No thread, but the event may still have been sent inside the 14-day window.
-    const seen = (history.entries ?? []).some((e) => e.event_key === story.event_key);
-    return !seen || (story.novelty ?? 0) >= 5;
+    // Aliases (keys an event was merged from) count for 96 h only, so one wrong
+    // merge cannot shadow a story for two weeks.
+    const now = Date.now();
+    const seen = (history.entries ?? []).some(
+      (e) =>
+        e.event_key === story.event_key ||
+        (now - (e.sent_at ?? 0) <= 96 * 3600e3 && e.aliases?.includes(story.event_key))
+    );
+    return !seen || (!quiet && !repeat && (story.novelty ?? 0) >= 5);
   }
   const last = thread.beats?.[thread.beats.length - 1];
-  if (!last) return true;
-  return STAGE_ORDER[story.development_stage] > STAGE_ORDER[last.stage] || (story.novelty ?? 0) >= 7;
+  if (!last) return !repeat;
+  if (quiet || repeat) return STAGE_ORDER[story.development_stage] > STAGE_ORDER[last.stage];
+  // Novelty 5-7 is defined in the scoring prompt as "a real development in a
+  // story already sent". Requiring 7 here meant a correctly linked development
+  // was suppressed while the same story left unlinked passed at 5.
+  return STAGE_ORDER[story.development_stage] > STAGE_ORDER[last.stage] || (story.novelty ?? 0) >= 5;
 }
 
 const STAGE_ORDER = { retrospective: 0, proposed: 1, ongoing: 2, pending: 3, occurred: 4 };
@@ -267,6 +296,43 @@ function violatesSectionBalance(story, picked, slots) {
   return partisan.every((s) => s === partisan[0]) && side(story.lean ?? 'center') === partisan[0];
 }
 
+/** Union of retrieval facts across every scored copy of each event. */
+export function eventCoverage(scored) {
+  const byKey = new Map();
+  for (const s of scored) {
+    if (s.prompt_injection_attempt) continue;
+    // A copy the dedupe call moved under this key is a model judgment, not a
+    // retrieval fact; it must not add outlets, leans or links (src/events.js).
+    if (s.model_grouped) continue;
+    const key = s.event_key || s.id;
+    const c = byKey.get(key) ?? { leans: new Set(), classes: new Set(), copies: [] };
+    for (const l of s.leans ?? [s.lean ?? 'center']) c.leans.add(l);
+    for (const k of s.source_classes ?? [s.source_class ?? 'established']) c.classes.add(k);
+    c.copies.push({ url: s.url, source: s.source, lean: s.lean, source_class: s.source_class });
+    byKey.set(key, c);
+  }
+  return byKey;
+}
+
+function withCoverage(story, c) {
+  if (!c) return story;
+  const supporting = [...(story.supporting ?? [])];
+  const seen = new Set([story.url, ...supporting.map((x) => x.url)]);
+  for (const copy of c.copies) {
+    if (supporting.length >= 2) break;
+    if (copy.url && !seen.has(copy.url)) {
+      supporting.push(copy);
+      seen.add(copy.url);
+    }
+  }
+  return {
+    ...story,
+    leans: [...new Set([...(story.leans ?? []), ...c.leans])],
+    source_classes: [...new Set([...(story.source_classes ?? []), ...c.classes])],
+    supporting,
+  };
+}
+
 function collapseByEventKey(pool) {
   const groups = new Map();
   for (const story of pool) {
@@ -278,6 +344,15 @@ function collapseByEventKey(pool) {
     }
     const [winner, loser] = story.total_score > existing.total_score ? [story, existing] : [existing, story];
     const merged = { ...winner, supporting: [...(winner.supporting ?? [])] };
+    const keys = [...new Set([...(winner.merged_keys ?? []), ...(loser.merged_keys ?? [])])];
+    if (keys.length) merged.merged_keys = keys;
+    if (winner.model_grouped || loser.model_grouped) {
+      // Same event per the dedupe call: keep one story, add nothing from the other.
+      merged.model_grouped = Boolean(winner.model_grouped);
+      merged.repeat_of = winner.repeat_of ?? loser.repeat_of;
+      groups.set(key, merged);
+      continue;
+    }
     // Union both — two outlets the scorer gave different event_keys still count
     // as corroboration once they merge here, and the cluster's quality is the
     // best class present.

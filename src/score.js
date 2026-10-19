@@ -17,19 +17,24 @@ const BATCH_SIZE = 25;
 
 export async function scoreCandidates(
   candidates,
-  { prompt, schema, preferences, historyText, historyKeys, openThreads, provider, chain, usage, log }
+  { prompt, schema, preferences, historyText, historyKeys, openThreads, provider, chain, usage, log, retryDelayMs = 1500 }
 ) {
   const providers = chain?.length ? chain : [provider];
   const batches = chunk(candidates, BATCH_SIZE);
   log(`scoring ${candidates.length} candidates in ${batches.length} batches via ${providers[0].label}`);
 
   let rescued = 0;
+  let filled = 0;
   const usedProviders = new Set();
+  // Shared across batches: a provider that fails two batches in a row is skipped
+  // for the rest of the run instead of burning three attempts on every batch.
+  const breaker = { streak: new Map(), open: new Set() };
   const results = await mapLimit(batches, providers[0].concurrency ?? 3, async (batch, i) => {
-    const { stories, usedName, wasRescued } = await scoreBatchWithRetry(providers, batch, {
-      prompt, schema, historyText, historyKeys, openThreads, preferences, usage, log, index: i,
+    const { stories, usedName, wasRescued, filledCount } = await scoreBatchWithRetry(providers, batch, {
+      prompt, schema, historyText, historyKeys, openThreads, preferences, usage, log, index: i, breaker, retryDelayMs,
     });
     if (wasRescued) rescued++;
+    filled += filledCount ?? 0;
     if (usedName) usedProviders.add(usedName);
     return stories;
   });
@@ -48,7 +53,7 @@ export async function scoreCandidates(
 
   scored.sort((a, b) => b.total_score - a.total_score);
   log(`scored ${scored.length} candidates; ${scored.filter((s) => s.include_candidate).length} marked includable`);
-  return { scored, meta: { batches: batches.length, rescued, providers: [...usedProviders] } };
+  return { scored, meta: { batches: batches.length, rescued, filled, providers: [...usedProviders] } };
 }
 
 /**
@@ -151,7 +156,17 @@ export function computeQuality(story, candidate, preferences) {
     ? candidate.source_classes
     : [candidate?.source_class ?? 'established'];
 
-  const base = Math.max(...classes.map((c) => multipliers[c] ?? 0.8));
+  let base = Math.max(...classes.map((c) => multipliers[c] ?? 0.8));
+
+  // "Bad source" feedback: demote this feed one rung of the quality ladder per
+  // click, capped at two (src/feedback.js). Written to history since day one,
+  // but nothing read it until 2026-10-07.
+  const rungs = Math.min(2, Number(preferences._sourceOverrides?.[candidate?.feed_id]) || 0);
+  if (rungs > 0) {
+    const ladder = [...new Set(Object.values(multipliers))].sort((a, b) => b - a);
+    const at = ladder.findIndex((v) => v <= base);
+    base = ladder[Math.min(ladder.length - 1, (at === -1 ? ladder.length - 1 : at) + rungs)] ?? base;
+  }
 
   let deduction = 1;
   for (const flag of story.sourcing_flags ?? []) {
@@ -217,8 +232,11 @@ function sanitizeStory(raw, enums, threadKeys) {
   if (!raw || typeof raw !== 'object' || !raw.id) return null;
 
   const category = enums.categories.has(raw.category) ? raw.category : 'politics';
+  // Built from schema fields only. A spread of `raw` here let any extra key the
+  // model returned (url, leans, source_classes) overwrite retrieval facts when
+  // merged over the candidate, i.e. a prompt-injected snippet could swap the
+  // link or fake cross-spectrum corroboration.
   const out = {
-    ...raw,
     id: String(raw.id),
     event_key: slug(raw.event_key || raw.id),
     clean_title: String(raw.clean_title ?? '').slice(0, 300),
@@ -274,19 +292,55 @@ async function scoreBatchWithRetry(providers, batch, ctx) {
     payload,
   };
 
+  const ids = new Set(batch.map((c) => String(c.id)));
+  const breaker = ctx.breaker ?? { streak: new Map(), open: new Set() };
+
   for (const provider of providers) {
+    if (breaker.open.has(provider.name)) continue;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        const stories = await provider.scoreBatch(args);
-        return { stories, usedName: provider.name, wasRescued: provider.name === 'heuristic' && providers.length > 1 };
+        const got = byBatchId(await provider.scoreBatch(args), ids);
+        // A reply that parses but covers too little of the batch (wrong top-level
+        // key, truncated array) used to count as success and drop those stories
+        // without a trace. Treat it as a failure so it retries or falls back.
+        if (got.size < Math.ceil(ids.size * MIN_COVERAGE)) {
+          throw new Error(`returned ${got.size} of ${ids.size} items`);
+        }
+        let stories = [...got.values()];
+        let filledCount = 0;
+        if (got.size < ids.size && provider.name !== 'heuristic') {
+          const missing = payload.filter((p) => !got.has(String(p.id)));
+          stories = stories.concat(await heuristic.scoreBatch({ ...args, payload: missing }));
+          filledCount = missing.length;
+          ctx.log(`  batch ${ctx.index} ${provider.name} omitted ${filledCount} of ${ids.size} items; scored those by rules`, 'warn');
+        }
+        breaker.streak.set(provider.name, 0);
+        return {
+          stories,
+          usedName: provider.name,
+          wasRescued: provider.name === 'heuristic' && providers.length > 1,
+          filledCount,
+        };
       } catch (err) {
         const msg = String(err.message ?? err);
-        if (attempt < 3) {
+        // A timeout already spent the whole budget once; a third identical wait
+        // rarely ends differently.
+        const giveUp = attempt >= 3 || (err.timeout && attempt >= 2);
+        if (!giveUp) {
           ctx.log(`  batch ${ctx.index} ${provider.name} attempt ${attempt} failed (${msg}); retrying`, 'warn');
-          await sleep(1500 * attempt);
+          await sleep((ctx.retryDelayMs ?? 1500) * attempt);
           continue;
         }
-        ctx.log(`  batch ${ctx.index} ${provider.name} failed 3 attempts (${msg}); falling back`, 'warn');
+        ctx.log(`  batch ${ctx.index} ${provider.name} failed ${attempt} attempts (${msg}); falling back`, 'warn');
+        break;
+      }
+    }
+    if (provider.name !== 'heuristic') {
+      const streak = (breaker.streak.get(provider.name) ?? 0) + 1;
+      breaker.streak.set(provider.name, streak);
+      if (streak >= 2) {
+        breaker.open.add(provider.name);
+        ctx.log(`  ${provider.name} failed ${streak} batches in a row; skipping it for the rest of this run`, 'warn');
       }
     }
   }
@@ -294,7 +348,20 @@ async function scoreBatchWithRetry(providers, batch, ctx) {
   // Unreachable in practice: the cascade always ends in heuristic, which has no
   // network dependency and cannot fail.
   ctx.log(`  batch ${ctx.index} exhausted every provider`, 'error');
-  return { stories: [], usedName: null, wasRescued: false };
+  return { stories: [], usedName: null, wasRescued: false, filledCount: 0 };
+}
+
+/** Share of a batch a reply must cover before it counts as an answer. */
+const MIN_COVERAGE = 0.8;
+
+/** First record per batch id; ids outside the batch and duplicates are dropped. */
+export function byBatchId(stories, ids) {
+  const got = new Map();
+  for (const s of Array.isArray(stories) ? stories : []) {
+    const id = s && typeof s === 'object' && s.id != null ? String(s.id) : null;
+    if (id && ids.has(id) && !got.has(id)) got.set(id, s);
+  }
+  return got;
 }
 
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, Number(n) || 0));

@@ -1,7 +1,13 @@
 node_modules/
 out/
+# Breaking-alert last-check record; CI keeps it in the Actions cache.
+state-cache/
 .env
 .DS_Store
 *.log
 t.mjs
 *.tmp.mjs
+.claude/
+# Wrangler local state and secrets (cloudflare/trigger)
+.wrangler/
+.dev.vars*

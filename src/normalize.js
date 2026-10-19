@@ -33,11 +33,13 @@ export function titleFingerprint(title) {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .split(/\s+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+    // Short tokens are noise except numbers: "I-96" vs "I-75", license "Y" vs
+    // "CC", "5/20" vs "5/22" are different stories with otherwise equal titles.
+    .filter((w) => (w.length > 2 || /\d/.test(w)) && !STOPWORDS.has(w));
   return [...new Set(words)].sort().slice(0, 8).join('-');
 }
 
-function stripHtml(s) {
+export function stripHtml(s) {
   return String(s)
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -62,6 +64,7 @@ export function normalize(rawItems, { log }) {
   const byTitle = new Map();
   let urlDupes = 0;
   let titleDupes = 0;
+  let nextId = 1;
 
   for (const item of rawItems) {
     const url = canonicalUrl(item.url);
@@ -70,19 +73,26 @@ export function normalize(rawItems, { log }) {
     const existingByUrl = byUrl.get(url);
     if (existingByUrl) {
       urlDupes++;
-      mergeSupporting(existingByUrl, item);
+      const moved = mergeSupporting(existingByUrl, item);
+      if (moved) byUrl.set(moved, existingByUrl);
       continue;
     }
 
+    // Syndication repeats come from OTHER feeds. Two items from the same feed
+    // with matching fingerprints are distinct stories (a daily "Open Thread",
+    // two road closures), so they are never title-merged.
     const existingByTitle = fp && byTitle.get(fp);
-    if (existingByTitle) {
+    if (existingByTitle && existingByTitle.feed_id !== item.feed_id) {
       titleDupes++;
-      mergeSupporting(existingByTitle, item);
+      const moved = mergeSupporting(existingByTitle, item);
+      // The primary link changed: register it, or a later copy of that exact
+      // URL becomes a second candidate with an identical link.
+      if (moved) byUrl.set(moved, existingByTitle);
       continue;
     }
 
     const candidate = {
-      id: `c${byUrl.size + 1}`,
+      id: `c${nextId++}`,
       title: stripHtml(item.title).slice(0, 300),
       url,
       snippet: stripHtml(item.snippet).slice(0, 1200),
@@ -107,10 +117,11 @@ export function normalize(rawItems, { log }) {
       supporting: [],
     };
     byUrl.set(url, candidate);
-    if (fp) byTitle.set(fp, candidate);
+    if (fp && !byTitle.has(fp)) byTitle.set(fp, candidate);
   }
 
-  const candidates = [...byUrl.values()].sort((a, b) => b.published_at - a.published_at);
+  // A candidate can sit under two URLs (its original and a promoted primary).
+  const candidates = [...new Set(byUrl.values())].sort((a, b) => b.published_at - a.published_at);
   log(
     `normalized to ${candidates.length} candidates (dropped ${urlDupes} url dupes, ${titleDupes} title dupes)`
   );
@@ -279,9 +290,10 @@ function mergeSupporting(target, item) {
     target.supporting.unshift({ url: target.url, source: target.source, lean: target.lean, source_class: target.source_class });
     target.url = url;
     promoteSource(target, item);
-  } else {
-    target.supporting.push({ url, source: item.source, lean: item.lean, source_class: item.source_class });
+    return url;
   }
+  target.supporting.push({ url, source: item.source, lean: item.lean, source_class: item.source_class });
+  return null;
 }
 
 /** Adopts a more credible source's attribution without changing the story. */
